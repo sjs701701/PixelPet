@@ -1,0 +1,26 @@
+{
+  "name": "@pixel-pet-arena/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "dev": "expo start"
+  },
+  "dependencies": {
+    "@expo/vector-icons": "^14.1.0",
+    "@pixel-pet-arena/shared": "0.1.0",
+    "@react-native-async-storage/async-storage": "^2.1.2",
+    "@tanstack/react-query": "^5.87.4",
+    "expo": "^53.0.20",
+    "expo-linear-gradient": "^14.1.5",
+    "expo-status-bar": "^2.2.3",
+    "react": "19.0.0",
+    "react-native": "0.79.5",
+    "socket.io-client": "^4.8.1",
+    "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.12",
+    "typescript": "^5.6.3"
+  }
+}

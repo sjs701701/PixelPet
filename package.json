@@ -1,0 +1,15 @@
+{
+  "name": "pixel-pet-arena",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:mobile": "npm run dev --workspace @pixel-pet-arena/mobile",
+    "dev:server": "npm run dev --workspace @pixel-pet-arena/server",
+    "build": "npm run build --workspace @pixel-pet-arena/shared && npm run build --workspace @pixel-pet-arena/server",
+    "test": "npm run test --workspace @pixel-pet-arena/shared"
+  }
+}
