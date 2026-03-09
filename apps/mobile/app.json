@@ -2,6 +2,13 @@
   "expo": {
     "name": "Pixel Pet Arena",
     "slug": "pixel-pet-arena",
-    "scheme": "pixelpetarena"
+    "scheme": "pixelpetarena",
+    "android": {
+      "package": "com.pixelpetarena.mobile",
+      "edgeToEdgeEnabled": true
+    },
+    "ios": {
+      "bundleIdentifier": "com.pixelpetarena.mobile"
+    }
   }
 }
