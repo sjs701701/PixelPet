@@ -1,8 +1,8 @@
 {
-  "frameWidth": 440,
-  "frameHeight": 700,
-  "idleFrames": 4,
+  "frameWidth": 218,
+  "frameHeight": 218,
+  "idleFrames": 6,
   "fps": {
-    "idle": 4,
+    "idle": 6
   }
 }

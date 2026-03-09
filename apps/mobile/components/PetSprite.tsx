@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import { ElementType } from "@pixel-pet-arena/shared";
 import { colors } from "../theme/colors";
+import fire001Stage1Meta from "../assets/pets/fire/fire-001/stage-1/meta.json";
 
 const SPRITES: Record<ElementType, string[]> = {
   fire: ["0001110000", "0012221000", "0123332100", "1233333210", "1234343210", "1233333210", "0123232100", "0012121000", "0001110000", "0000100000"],
@@ -22,10 +23,10 @@ const PALETTES: Record<ElementType, string[]> = {
 const REGISTERED_SPRITES = {
   "fire-1": {
     source: require("../assets/pets/fire/fire-001/stage-1/idle.png"),
-    frameWidth: 440,
-    frameHeight: 700,
-    frames: 4,
-    fps: 4,
+    frameWidth: fire001Stage1Meta.frameWidth,
+    frameHeight: fire001Stage1Meta.frameHeight,
+    frames: fire001Stage1Meta.idleFrames,
+    fps: fire001Stage1Meta.fps.idle,
   },
 } as const;
 
