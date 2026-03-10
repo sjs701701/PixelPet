@@ -1,82 +1,66 @@
 # Pixel Pet Arena
 
-Pixel Pet Arena is a dot-style Tamagotchi battle prototype.
+Pixel Pet Arena is a retro-styled mobile tamagotchi prototype built with Expo, React Native, and NestJS.
 
-This project includes:
+The current build focuses on a strong pixel-art presentation: a dark arcade UI, animated pet sprite, care actions, collection preview, and a basic battle queue flow backed by a local API server.
 
-- a mobile app built with Expo and React Native
-- a server built with NestJS
-- shared game data and battle rules in a common package
+![Pixel Pet Arena screenshot](./screenshots/1.jpg)
 
-## Project Goal
+## Overview
 
-The app is a Tamagotchi-style game where players raise a pet and battle other players.
+- Raise a pixel pet with a simple care loop
+- Start with 1 random pet template
+- Manage `Feed`, `Clean`, `Play`, and `Rest` actions
+- Browse a small collection preview of available templates
+- Queue for battle from the mobile app
+- Switch language and theme inside the app
+- Share battle and content rules between client and server through a shared package
 
-Current design goals:
+## Current App Flow
 
-- 5 elements: fire, water, grass, electric, digital
-- 60 total pet templates
-- 12 pets per element
-- first pet is assigned randomly
-- turn-based PvP battle
-- premium features are convenience and cosmetics only
-- premium must not increase battle win rate
+The current mobile prototype includes these screens and flows:
 
-## Current Status
+1. Splash screen with retro boot-style presentation
+2. Demo login flow
+3. Home tab with featured pet, level/EXP, and care actions
+4. Battle tab with queue request
+5. Collection tab with template preview
+6. Profile tab with trainer info and settings
 
-Working prototype includes:
+## Visual Direction
 
-- first app screen
-- login demo flow
-- random first pet generation
-- pet care actions
-- battle queue request
-- shared element balance table
-- shared pet template data
-- server API for auth, pet, care, battle, premium, replay, and content
+This version of the app is intentionally styled like an indie pixel game:
 
-Current mobile flow:
+- `Press Start 2P` typography
+- high-contrast dark theme with a light theme option
+- pixel icon set for care actions
+- minimalist dividers and UI framing
+- animated sprite support for registered pets
 
-1. Open app
-2. Tap `Login + Get First Pet`
-3. Receive 1 random pet
-4. Use `Feed`, `Clean`, `Play`, `Rest`
-5. Enter battle queue
+## Project Structure
 
-## Folder Structure
+- `apps/mobile`: Expo + React Native app
+- `apps/server`: NestJS API server
+- `packages/shared`: shared game logic, pet templates, types, care rules, and battle rules
 
-- `apps/mobile`
-  - Expo mobile app
-- `apps/server`
-  - NestJS API and WebSocket server
-- `packages/shared`
-  - shared types, element rules, pet templates, battle logic, care logic
+## Tech Stack
 
-## Requirements
+- React Native 0.79
+- Expo 53
+- TypeScript
+- NestJS 11
+- React Query
+- Zustand
+- AsyncStorage
+- Socket.IO / Socket.IO Client
 
-Before running the project, install:
+## Getting Started
 
-- Node.js
-- npm
-- Android Studio and Android Emulator if you want to test on Android emulator
-
-Recommended:
-
-- Git
-- GitHub Desktop
-
-## Install
-
-Clone the repository:
+Clone the repository and install dependencies:
 
 ```bash
 git clone https://github.com/sjs701701/PixelPet.git
 cd PixelPet
-```
-
-Install packages:
-
-```bash
 npm install
 ```
 
@@ -88,126 +72,67 @@ From the project root:
 npm run dev:server
 ```
 
-The server runs on:
-
-```text
-http://localhost:3001
-```
+The API server runs on `http://localhost:3001`.
 
 ## Run The Mobile App
 
-Open a new terminal and move to the mobile app folder:
+From the project root:
+
+```bash
+npm run dev:mobile
+```
+
+Or directly from the mobile workspace:
 
 ```bash
 cd apps/mobile
 npx expo start
 ```
 
-If you are using Android Emulator:
+For Android emulator testing:
 
-1. Start the emulator first
-2. In the Expo terminal, press `a`
+1. Start the Android emulator first
+2. Run the Expo dev server
+3. Press `a` in the Expo terminal
 
-Note:
-
-- the mobile app is already configured to call the local server from Android Emulator using `10.0.2.2`
+The mobile app is configured to reach the local server through the Android emulator host alias `10.0.2.2`.
 
 ## Useful Commands
 
-From the project root:
+From the repository root:
 
 ```bash
+npm run dev:mobile
 npm run dev:server
 npm run build
 npm test
 ```
 
-## Tech Stack
+## Gameplay Notes
 
-- React Native
-- Expo
-- NestJS
-- TypeScript
-- Socket.IO
-- Zustand
-- React Query
+- Elements currently used: `fire`, `water`, `grass`, `electric`, `digital`
+- First pet acquisition is random
+- Care actions affect the pet state
+- Battle queue flow is connected to the local server
+- Shared rules live in `packages/shared` so client and server stay aligned
 
-## Gameplay Rules
+## Current Scope
 
-### Elements
+This repository is still a prototype. The current version is strongest in:
 
-- Fire
-- Water
-- Grass
-- Electric
-- Digital
+- visual identity
+- app shell and tab structure
+- local development workflow
+- shared gameplay rule setup
 
-Each element has:
+Areas still suited for future iteration:
 
-- 1 strong advantage target
-- 1 weak-edge advantage target
-
-Battle impact:
-
-- strong advantage: +20%
-- weak-edge advantage: +10%
-
-Element advantage alone should not guarantee victory.
-Level, items, and random battle variance also affect the result.
-
-### Pets
-
-- first pet is random
-- pet element is fixed when created
-- pet cannot change element later
-- multiple users can receive the same pet template
-
-### Premium Rules
-
-Premium can include:
-
-- dot skins
-- battle backgrounds
-- profile frames
-- replay archive
-- auto care assist
-
-Premium must not affect:
-
-- attack power
-- defense power
-- growth speed advantage in battle
-- item power advantage
-- win-rate advantage
-
-## Notes For Next Work Session
-
-Good next steps:
-
-- improve battle UI
-- connect real-time battle screen to WebSocket events
-- add better loading and error states
-- improve README screenshots and feature explanation
-- replace demo login with real Google / Apple login
-- persist data in a real database instead of in-memory storage
-
-## Company PC Setup
-
-If continuing work on another computer:
-
-1. Clone this repository
-2. Run `npm install`
-3. Start the server with `npm run dev:server`
-4. Start the mobile app with:
-
-```bash
-cd apps/mobile
-npx expo start
-```
-
-5. Open Android Emulator
-6. Press `a` in the Expo terminal
+- richer battle presentation
+- real auth provider integration
+- persistent database storage
+- expanded pet content and progression
+- production-ready error handling and polish
 
 ## License
 
-This project is currently for prototype and internal development use.
+This project is currently intended for prototype and internal development use.
