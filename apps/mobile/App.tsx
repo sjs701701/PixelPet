@@ -1,31 +1,31 @@
-﻿import AsyncStorage from "@react-native-async-storage/async-storage";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { QueryClient, QueryClientProvider, useMutation } from "@tanstack/react-query";
+import { useFonts, PressStart2P_400Regular } from "@expo-google-fonts/press-start-2p";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Animated, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { ElementType, PET_TEMPLATES, getElementAdvantageTier } from "@pixel-pet-arena/shared";
 import { PetSprite } from "./components/PetSprite";
 import { PixelCard } from "./components/PixelCard";
+import { PixelIcon } from "./components/PixelIcon";
 import { getCopy, getElementLabel } from "./lib/i18n";
 import { performCare, queueBattle, rollInitialPet, signIn } from "./lib/api";
 import { AppLanguage, useSessionStore } from "./lib/store";
-import { colors } from "./theme/colors";
+import { ThemeContext, useTheme } from "./theme/ThemeContext";
+import { ThemeColors, ThemeMode, getTheme } from "./theme/colors";
 
 const queryClient = new QueryClient();
 const LANGUAGE_KEY = "pixelpet.language";
+const THEME_KEY = "pixelpet.theme";
+const STAT_THRESHOLD = 30;
+const FONT = "PressStart2P_400Regular";
+const COOLDOWN_MS = 10000;
 
 type StartupPhase = "splash" | "login" | "app";
 type TabKey = "home" | "battle" | "collection" | "profile";
 
-const elementAccent: Record<ElementType, string> = {
-  fire: colors.pixelFire,
-  water: colors.pixelWater,
-  grass: colors.pixelGrass,
-  electric: colors.pixelElectric,
-  digital: colors.pixelDigital,
-};
-
 function AppShell() {
+  const { c, mode } = useTheme();
   const [tab, setTab] = useState<TabKey>("home");
   const [startupPhase, setStartupPhase] = useState<StartupPhase>("splash");
   const { user, token, pet, petNickname, language, setSession, setPet, setPetNickname, setLanguage } =
@@ -91,20 +91,23 @@ function AppShell() {
     () => PET_TEMPLATES.find((template) => template.id === pet?.templateId),
     [pet],
   );
+  const homeShowcaseTemplate = useMemo(
+    () => PET_TEMPLATES.find((template) => template.id === "fire-1") ?? petTemplate,
+    [petTemplate],
+  );
   const collectionPreview = useMemo(() => PET_TEMPLATES.slice(0, 8), []);
 
-  const tabs = [
-    { key: "home" as const, label: t.tabs.home },
-    { key: "battle" as const, label: t.tabs.battle },
-    { key: "collection" as const, label: t.tabs.collection },
-    { key: "profile" as const, label: t.tabs.profile },
+  const tabs: { key: TabKey; label: string }[] = [
+    { key: "home", label: t.tabs.home },
+    { key: "battle", label: t.tabs.battle },
+    { key: "collection", label: t.tabs.collection },
+    { key: "profile", label: t.tabs.profile },
   ];
 
-  if (startupPhase === "splash") return <SplashScreen language={language} />;
+  if (startupPhase === "splash") return <SplashScreen />;
   if (startupPhase === "login") {
     return (
       <LoginScreen
-        language={language}
         loading={loginMutation.isPending}
         hasError={loginMutation.isError}
         onLogin={() => loginMutation.mutate()}
@@ -113,18 +116,17 @@ function AppShell() {
   }
 
   return (
-    <View style={styles.page}>
-      <StatusBar style="light" />
-      <View style={styles.wallpaper} />
+    <View style={[styles.page, { backgroundColor: c.bg }]}>
+      <StatusBar style={mode === "dark" ? "light" : "dark"} />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {tab === "home" ? (
           <HomeTab
-            language={language}
-            petTemplateId={petTemplate?.id}
-            petTemplateName={petTemplate?.name}
+            petTemplateId={homeShowcaseTemplate?.id}
+            petTemplateName={homeShowcaseTemplate?.name}
             petNickname={petNickname}
-            petTemplateElement={petTemplate?.element}
+            petTemplateElement={homeShowcaseTemplate?.element}
             petLevel={pet?.level}
+            petExp={pet?.experience}
             careState={pet?.careState}
             firstPetPending={firstPetMutation.isPending}
             firstPetError={firstPetMutation.isError}
@@ -135,7 +137,6 @@ function AppShell() {
         ) : null}
         {tab === "battle" ? (
           <BattleTab
-            language={language}
             petTemplateName={petTemplate?.name}
             petTemplateElement={petTemplate?.element}
             queuePending={queueMutation.isPending}
@@ -145,14 +146,12 @@ function AppShell() {
         ) : null}
         {tab === "collection" ? (
           <CollectionTab
-            language={language}
             currentTemplateId={pet?.templateId}
             collectionPreview={collectionPreview}
           />
         ) : null}
         {tab === "profile" ? (
           <ProfileTab
-            language={language}
             onLanguageChange={setLanguage}
             userName={user?.displayName}
             provider={user?.loginProvider}
@@ -161,16 +160,12 @@ function AppShell() {
         ) : null}
         <View style={styles.bottomSpacer} />
       </ScrollView>
-      <View style={styles.tabDock}>
+      <View style={[styles.tabDock, { backgroundColor: c.bg, borderTopColor: c.divider }]}>
         {tabs.map((item) => {
           const active = item.key === tab;
           return (
-            <Pressable
-              key={item.key}
-              onPress={() => setTab(item.key)}
-              style={[styles.tabButton, active && styles.tabButtonActive]}
-            >
-              <Text style={styles.tabButtonText}>{item.label}</Text>
+            <Pressable key={item.key} onPress={() => setTab(item.key)} style={styles.tabButton}>
+              <Text style={[styles.tabLabel, { color: active ? c.text : c.grayDark }]}>{item.label}</Text>
             </Pressable>
           );
         })}
@@ -179,77 +174,73 @@ function AppShell() {
   );
 }
 
-function SplashScreen({ language }: { language: AppLanguage }) {
-  const t = getCopy(language);
+/* ───── Splash ───── */
+
+function SplashScreen() {
+  const { c, mode } = useTheme();
+  const { language } = useSessionStore();
   return (
-    <View style={styles.splashPage}>
-      <StatusBar style="light" />
-      <View style={styles.monitorShell}>
-        <View style={styles.monitorFrame}>
-          <View style={styles.monitorScreen}>
-            <Text style={styles.bootKicker}>{t.hero.kicker}</Text>
-            <Text style={styles.bootTitle}>PIXEL PET</Text>
-            <Text style={styles.bootTitle}>ARENA</Text>
-            <Text style={styles.bootHint}>{language === "ko" ? "시스템 부팅 중..." : "System booting..."}</Text>
-          </View>
-          <View style={styles.monitorPower}><View style={styles.powerDot} /></View>
-        </View>
-      </View>
+    <View style={[styles.splashPage, { backgroundColor: c.bg }]}>
+      <StatusBar style={mode === "dark" ? "light" : "dark"} />
+      <Text style={[styles.splashKicker, { color: c.gray }]}>
+        {language === "ko" ? "시스템 부팅 중..." : "system booting..."}
+      </Text>
+      <Text style={[styles.splashTitle, { color: c.text }]}>PIXEL PET</Text>
+      <Text style={[styles.splashTitle, { color: c.text }]}>ARENA</Text>
     </View>
   );
 }
 
+/* ───── Login ───── */
+
 function LoginScreen({
-  language,
   loading,
   hasError,
   onLogin,
 }: {
-  language: AppLanguage;
   loading: boolean;
   hasError: boolean;
   onLogin: () => void;
 }) {
+  const { c, mode } = useTheme();
+  const { language } = useSessionStore();
   return (
-    <View style={styles.splashPage}>
-      <StatusBar style="light" />
-      <View style={styles.monitorShell}>
-        <View style={styles.monitorFrame}>
-          <View style={styles.monitorScreen}>
-            <Text style={styles.bootKicker}>PIXEL PET ARENA</Text>
-            <Text style={styles.loginHeadline}>{language === "ko" ? "트레이너 로그인" : "Trainer Login"}</Text>
-            <Text style={styles.loginCopy}>
-              {language === "ko"
-                ? "게임 데이터를 연결한 뒤 홈 화면으로 이동합니다."
-                : "Link your trainer data and move into the home screen."}
-            </Text>
-            <Pressable style={styles.arcadeButtonLarge} onPress={onLogin}>
-              <Text style={styles.arcadeButtonLargeText}>
-                {loading ? (language === "ko" ? "로그인 중..." : "LOGGING IN...") : "ENTER"}
-              </Text>
-            </Pressable>
-            {hasError ? (
-              <Text style={styles.errorText}>
-                {language === "ko"
-                  ? "로그인에 실패했습니다. 서버 연결을 확인하세요."
-                  : "Login failed. Check the server connection."}
-              </Text>
-            ) : null}
-          </View>
-          <View style={styles.monitorPower}><View style={styles.powerDot} /></View>
-        </View>
-      </View>
+    <View style={[styles.splashPage, { backgroundColor: c.bg }]}>
+      <StatusBar style={mode === "dark" ? "light" : "dark"} />
+      <Text style={[styles.splashKicker, { color: c.gray }]}>pixel pet arena</Text>
+      <Text style={[styles.loginHeadline, { color: c.text }]}>
+        {language === "ko" ? "트레이너 로그인" : "trainer login"}
+      </Text>
+      <Text style={[styles.loginCopy, { color: c.gray }]}>
+        {language === "ko"
+          ? "게임 데이터를 연결한 뒤\n홈 화면으로 이동합니다."
+          : "link your trainer data\nand enter the home screen."}
+      </Text>
+      <Pressable style={[styles.enterButton, { borderColor: c.divider }]} onPress={onLogin}>
+        <Text style={[styles.enterButtonText, { color: c.text }]}>
+          {loading ? (language === "ko" ? "접속 중..." : "connecting...") : "enter"}
+        </Text>
+      </Pressable>
+      {hasError ? (
+        <Text style={[styles.errorText, { color: c.accent }]}>
+          {language === "ko"
+            ? "로그인 실패. 서버를 확인하세요."
+            : "login failed. check server."}
+        </Text>
+      ) : null}
     </View>
   );
 }
 
+/* ───── Home ───── */
+
 function HomeTab({
-  language,
   petTemplateId,
   petTemplateName,
   petNickname,
   petTemplateElement,
   petLevel,
+  petExp,
   careState,
   firstPetPending,
   firstPetError,
@@ -257,12 +248,12 @@ function HomeTab({
   onGetFirstPet,
   onCare,
 }: {
-  language: AppLanguage;
   petTemplateId?: string;
   petTemplateName?: string;
   petNickname?: string;
   petTemplateElement?: ElementType;
   petLevel?: number;
+  petExp?: number;
   careState?: { hunger: number; mood: number; hygiene: number; energy: number; bond: number };
   firstPetPending: boolean;
   firstPetError: boolean;
@@ -270,347 +261,619 @@ function HomeTab({
   onGetFirstPet: (nickname?: string) => void;
   onCare: (action: "feed" | "clean" | "play" | "rest") => void;
 }) {
+  const { c } = useTheme();
+  const { language } = useSessionStore();
   const t = getCopy(language);
-  const hasPet = Boolean(petTemplateName && petTemplateElement);
+  const hasPet = Boolean(petTemplateName && petTemplateElement && careState);
   const [nicknameOpen, setNicknameOpen] = useState(false);
   const [nicknameDraft, setNicknameDraft] = useState("");
   const [nicknameInputKey, setNicknameInputKey] = useState(0);
+  const [cooldowns, setCooldowns] = useState<Record<string, number>>({});
   const displayName = petNickname ?? petTemplateName;
+
+  const startCooldown = useCallback((key: string) => {
+    const id = Date.now();
+    setCooldowns((prev) => ({ ...prev, [key]: id }));
+    setTimeout(() => {
+      setCooldowns((prev) => (prev[key] === id ? { ...prev, [key]: 0 } : prev));
+    }, COOLDOWN_MS);
+  }, []);
 
   function handleOpenNickname() { setNicknameInputKey((v) => v + 1); setNicknameOpen(true); }
   function handleCancelNickname() { setNicknameOpen(false); setNicknameDraft(""); setNicknameInputKey((v) => v + 1); }
   function handleConfirmFirstPet() { onGetFirstPet(nicknameDraft); setNicknameOpen(false); setNicknameDraft(""); setNicknameInputKey((v) => v + 1); }
 
+  const careActions: { key: "feed" | "clean" | "play" | "rest"; icon: string; label: string }[] = [
+    { key: "feed", icon: "feed", label: t.home.feed },
+    { key: "clean", icon: "clean", label: t.home.clean },
+    { key: "play", icon: "play", label: t.home.play },
+    { key: "rest", icon: "rest", label: t.home.rest },
+  ];
+
   return (
     <>
-      <View style={styles.monitorShell}>
-        <View style={styles.monitorFrame}>
-          <View style={styles.monitorScreenLarge}>
-            {hasPet && petTemplateElement && petTemplateName ? (
-              <View style={styles.petStage}>
-                <View style={styles.petStageHeader}>
-                  <Text style={styles.stageLabel}>{getElementLabel(language, petTemplateElement)}</Text>
-                  <Text style={styles.stageLabel}>LV {petLevel ?? 0}</Text>
-                </View>
-                <View style={styles.petStageInner}>
-                  <PetSprite
-                    element={petTemplateElement}
-                    name={displayName ?? petTemplateName}
-                    templateId={petTemplateId}
-                    size={18}
-                  />
-                </View>
-                <Text style={styles.stageName}>{displayName ?? petTemplateName}</Text>
-              </View>
-            ) : (
-              <View style={styles.petStage}>
-                <View style={styles.emptyScreen}>
-                  <Text style={styles.emptyHeadline}>{language === "ko" ? "첫 펫을 받으세요" : "Get your first pet"}</Text>
-                  <Text style={styles.emptyBody}>
-                    {language === "ko"
-                      ? "랜덤 스타터 펫을 받고 홈 화면을 활성화하세요."
-                      : "Roll a random starter pet and activate your home base."}
+      {/* Section 1 — Pet Info */}
+      {hasPet && petTemplateElement && petTemplateName ? (
+        <View style={styles.petInfoRow}>
+          <View style={styles.petImageArea}>
+            <PetSprite
+              element={petTemplateElement}
+              name={displayName ?? petTemplateName}
+              templateId={petTemplateId}
+              size={18}
+            />
+          </View>
+          <View style={styles.petMetaArea}>
+            <Text style={[styles.metaLabel, { color: c.gray }]}>
+              {language === "ko" ? "속성" : "element"}
+            </Text>
+            <Text style={[styles.metaValue, { color: c.text }]}>
+              {getElementLabel(language, petTemplateElement)}
+            </Text>
+            <Text style={[styles.metaLabel, { color: c.gray }]}>
+              {language === "ko" ? "종족" : "species"}
+            </Text>
+            <Text style={[styles.metaValueBold, { color: c.text }]}>{petTemplateName}</Text>
+            {petNickname ? (
+              <>
+                <Text style={[styles.metaLabel, { color: c.gray }]}>
+                  {language === "ko" ? "이름" : "name"}
+                </Text>
+                <Text style={[styles.metaValue, { color: c.text }]}>{petNickname}</Text>
+              </>
+            ) : null}
+            <Text style={[styles.metaValue, { color: c.text, marginTop: 14 }]}>Lv. {petLevel ?? 0}</Text>
+            <DotExpBar value={petExp ?? 0} />
+          </View>
+        </View>
+      ) : (
+        <View style={styles.emptySection}>
+          <Text style={[styles.emptyHeadline, { color: c.text }]}>
+            {language === "ko" ? "첫 펫을 받으세요" : "get your first pet"}
+          </Text>
+          <Text style={[styles.emptyBody, { color: c.gray }]}>
+            {language === "ko"
+              ? "랜덤 스타터 펫을 받고\n홈 화면을 활성화하세요."
+              : "roll a random starter pet\nand activate your home base."}
+          </Text>
+          {!nicknameOpen ? (
+            <Pressable style={[styles.enterButton, { borderColor: c.divider }]} onPress={handleOpenNickname}>
+              <Text style={[styles.enterButtonText, { color: c.text }]}>
+                {language === "ko" ? "첫 펫 받기" : "get first pet"}
+              </Text>
+            </Pressable>
+          ) : (
+            <View style={styles.nicknameBlock}>
+              <Text style={[styles.metaLabel, { color: c.gray }]}>
+                {language === "ko" ? "별명 만들기" : "create nickname"}
+              </Text>
+              <TextInput
+                key={nicknameInputKey}
+                onChangeText={setNicknameDraft}
+                placeholder={language === "ko" ? "예: 장군" : "e.g. general"}
+                placeholderTextColor={c.grayDark}
+                style={[styles.nicknameInput, { borderBottomColor: c.divider, color: c.text }]}
+                maxLength={12}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <View style={styles.nicknameActions}>
+                <Pressable onPress={handleCancelNickname}>
+                  <Text style={[styles.actionTextGray, { color: c.gray }]}>
+                    {language === "ko" ? "취소" : "cancel"}
                   </Text>
-                </View>
-                {!nicknameOpen ? (
-                  <Pressable style={styles.arcadeButtonLarge} onPress={handleOpenNickname}>
-                    <Text style={styles.arcadeButtonLargeText}>{language === "ko" ? "첫 펫 받기" : "GET FIRST PET"}</Text>
-                  </Pressable>
-                ) : (
-                  <View style={styles.nicknameWindow}>
-                    <View style={styles.windowTitleBar}><Text style={styles.windowTitle}>{language === "ko" ? "별명 만들기" : "Create Nickname"}</Text></View>
-                    <TextInput
-                      key={nicknameInputKey}
-                      onChangeText={setNicknameDraft}
-                      placeholder={language === "ko" ? "예: 장군" : "e.g. General"}
-                      placeholderTextColor={colors.bezelShadow}
-                      style={styles.nicknameInput}
-                      maxLength={12}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                    />
-                    <View style={styles.nicknameActionRow}>
-                      <Pressable style={styles.arcadeButtonSmall} onPress={handleCancelNickname}><Text style={styles.arcadeButtonSmallText}>{language === "ko" ? "취소" : "CANCEL"}</Text></Pressable>
-                      <Pressable style={styles.arcadeButtonSmall} onPress={handleConfirmFirstPet}><Text style={styles.arcadeButtonSmallText}>{firstPetPending ? (language === "ko" ? "생성 중..." : "ROLLING...") : (language === "ko" ? "확인" : "CONFIRM")}</Text></Pressable>
-                    </View>
-                    {firstPetError ? <Text style={styles.errorText}>{language === "ko" ? "첫 펫 생성에 실패했습니다. 다시 시도하세요." : "First pet roll failed. Try again."}</Text> : null}
+                </Pressable>
+                <Pressable onPress={handleConfirmFirstPet}>
+                  <Text style={[styles.actionTextWhite, { color: c.text }]}>
+                    {firstPetPending
+                      ? (language === "ko" ? "생성 중..." : "rolling...")
+                      : (language === "ko" ? "확인" : "confirm")}
+                  </Text>
+                </Pressable>
+              </View>
+              {firstPetError ? (
+                <Text style={[styles.errorText, { color: c.accent }]}>
+                  {language === "ko" ? "첫 펫 생성 실패." : "first pet roll failed."}
+                </Text>
+              ) : null}
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* Section 2 — Status Bars */}
+      <View style={[styles.divider, { backgroundColor: c.divider }]} />
+      <View style={styles.statusSection}>
+        <StatBar label={t.home.hunger} value={careState?.hunger ?? 0} />
+        <StatBar label={t.home.mood} value={careState?.mood ?? 0} />
+        <StatBar label={t.home.hygiene} value={careState?.hygiene ?? 0} />
+        <StatBar label={t.home.energy} value={careState?.energy ?? 0} />
+        <StatBar label={t.home.bond} value={careState?.bond ?? 0} />
+      </View>
+
+      {/* Section 3 — Action Buttons */}
+      <View style={[styles.divider, { backgroundColor: c.divider }]} />
+      <View style={styles.actionRow}>
+        {careActions.map(({ key, icon, label }) => {
+          const anyCooldown = Object.values(cooldowns).some(Boolean);
+          const onCooldown = Boolean(cooldowns[key]);
+          const disabled = !hasPet || anyCooldown;
+          return (
+            <View key={key} style={styles.actionButtonWrap}>
+              <Pressable
+                style={[styles.actionButton, { borderColor: c.divider }, disabled && styles.actionButtonDisabled]}
+                disabled={disabled}
+                onPress={() => { onCare(key); startCooldown(key); }}
+              >
+                {({ pressed }) => (
+                  <View style={styles.actionInner}>
+                    <PixelIcon name={icon} color={pressed ? c.text : c.gray} size={32} />
+                    <Text style={[styles.actionLabel, { color: pressed ? c.text : c.gray }]}>
+                      {label}
+                    </Text>
                   </View>
                 )}
-              </View>
-            )}
-          </View>
-          <View style={styles.monitorPower}><View style={styles.powerDot} /></View>
-        </View>
+              </Pressable>
+              <CooldownOverlay key={cooldowns[key] || 0} active={onCooldown} duration={COOLDOWN_MS} />
+            </View>
+          );
+        })}
       </View>
-      <PixelCard title={language === "ko" ? "펫 데이터" : "Pet Data"} accent={colors.gold}>
-        <View style={styles.infoBoard}>
-          <InfoTile label={language === "ko" ? "속성" : "ELEMENT"} value={petTemplateElement ? getElementLabel(language, petTemplateElement) : "--"} />
-          <InfoTile label={language === "ko" ? "이름" : "NAME"} value={petTemplateName ?? "--"} />
-          <InfoTile label={language === "ko" ? "별명" : "NICK"} value={displayName ?? "--"} />
-          <InfoTile label={language === "ko" ? "레벨" : "LEVEL"} value={String(petLevel ?? 0)} />
-        </View>
-      </PixelCard>
-      <PixelCard title={t.home.careTitle} accent={colors.orange}>
-        <View style={styles.meterList}>
-          <SegmentMeter label={t.home.hunger} value={careState?.hunger ?? 0} accent={colors.gold} />
-          <SegmentMeter label={t.home.mood} value={careState?.mood ?? 0} accent={colors.orange} />
-          <SegmentMeter label={t.home.hygiene} value={careState?.hygiene ?? 0} accent={colors.sky} />
-          <SegmentMeter label={t.home.energy} value={careState?.energy ?? 0} accent={colors.violet} />
-          <SegmentMeter label={t.home.bond} value={careState?.bond ?? 0} accent={colors.red} />
-        </View>
-        <View style={styles.arcadeButtonGrid}>
-          {[
-            ["feed", t.home.feed],
-            ["clean", t.home.clean],
-            ["play", t.home.play],
-            ["rest", t.home.rest],
-          ].map(([key, label]) => (
-            <Pressable
-              key={key}
-              style={[styles.arcadeButtonMedium, !hasPet && styles.dimmedButton, carePending && styles.dimmedButton]}
-              disabled={!hasPet}
-              onPress={() => onCare(key as "feed" | "clean" | "play" | "rest")}
-            >
-              <Text style={styles.arcadeButtonMediumText}>{label}</Text>
-            </Pressable>
-          ))}
-        </View>
-      </PixelCard>
     </>
   );
 }
 
+/* ───── DotExpBar ───── */
+
+const EXP_DOTS = 10;
+const EXP_PER_LEVEL = 100;
+
+function DotExpBar({ value }: { value: number }) {
+  const { c } = useTheme();
+  const pct = (value % EXP_PER_LEVEL) / EXP_PER_LEVEL;
+  const filled = Math.round(pct * EXP_DOTS);
+
+  return (
+    <View style={styles.dotExpRow}>
+      {Array.from({ length: EXP_DOTS }).map((_, i) => (
+        <View
+          key={i}
+          style={[
+            styles.dotExpCell,
+            { backgroundColor: i < filled ? c.text : c.divider },
+          ]}
+        />
+      ))}
+    </View>
+  );
+}
+
+/* ───── StatBar ───── */
+
+function StatBar({ label, value }: { label: string; value: number }) {
+  const { c } = useTheme();
+  const clamped = Math.max(0, Math.min(100, value));
+  const isLow = clamped < STAT_THRESHOLD;
+  const fillColor = isLow ? c.accent : c.barFill;
+  const labelColor = isLow ? c.accent : c.gray;
+
+  return (
+    <View style={styles.statRow}>
+      <Text style={[styles.statLabel, { color: labelColor }]}>{label}</Text>
+      <View style={[styles.statTrack, { backgroundColor: c.barTrack }]}>
+        <View style={[styles.statFill, { width: `${clamped}%`, backgroundColor: fillColor }]} />
+      </View>
+      <Text style={[styles.statValue, { color: isLow ? c.accent : c.text }]}>{clamped}</Text>
+    </View>
+  );
+}
+
+/* ───── CooldownOverlay ───── */
+
+function CooldownOverlay({ active, duration }: { active: boolean; duration: number }) {
+  const { c } = useTheme();
+  const anim = useRef(new Animated.Value(0)).current;
+  const [remaining, setRemaining] = useState(0);
+  const startRef = useRef(0);
+
+  useEffect(() => {
+    if (!active) { setRemaining(0); return; }
+
+    anim.setValue(0);
+    startRef.current = Date.now();
+    setRemaining(Math.ceil(duration / 1000));
+
+    Animated.timing(anim, {
+      toValue: 1,
+      duration,
+      useNativeDriver: false,
+    }).start();
+
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - startRef.current;
+      const left = Math.ceil((duration - elapsed) / 1000);
+      if (left <= 0) { clearInterval(interval); setRemaining(0); }
+      else setRemaining(left);
+    }, 200);
+
+    return () => clearInterval(interval);
+  }, [active, duration, anim]);
+
+  if (!active) return null;
+
+  const overlayColor = c.bg === "#0A0A0A" ? "rgba(10,10,10,0.7)" : "rgba(245,245,240,0.7)";
+
+  // Clockwise sweep: top-right → bottom-right → bottom-left → top-left
+  const q1Opacity = anim.interpolate({ inputRange: [0, 0.25, 1], outputRange: [1, 0, 0] });
+  const q2Opacity = anim.interpolate({ inputRange: [0, 0.25, 0.5, 1], outputRange: [1, 1, 0, 0] });
+  const q3Opacity = anim.interpolate({ inputRange: [0, 0.5, 0.75, 1], outputRange: [1, 1, 0, 0] });
+  const q4Opacity = anim.interpolate({ inputRange: [0, 0.75, 1], outputRange: [1, 1, 0] });
+
+  return (
+    <View style={cdStyles.container} pointerEvents="none">
+      <View style={cdStyles.grid}>
+        <Animated.View style={[cdStyles.quadrant, { backgroundColor: overlayColor, opacity: q4Opacity }]} />
+        <Animated.View style={[cdStyles.quadrant, { backgroundColor: overlayColor, opacity: q1Opacity }]} />
+        <Animated.View style={[cdStyles.quadrant, { backgroundColor: overlayColor, opacity: q3Opacity }]} />
+        <Animated.View style={[cdStyles.quadrant, { backgroundColor: overlayColor, opacity: q2Opacity }]} />
+      </View>
+      <View style={cdStyles.timerWrap}>
+        <Text style={[cdStyles.timerText, { color: c.text }]}>{remaining}</Text>
+      </View>
+    </View>
+  );
+}
+
+const cdStyles = StyleSheet.create({
+  container: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: "hidden",
+  },
+  grid: {
+    flex: 1,
+    flexDirection: "row",
+    flexWrap: "wrap",
+  },
+  quadrant: {
+    width: "50%",
+    height: "50%",
+  },
+  timerWrap: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  timerText: {
+    fontSize: 12,
+    fontFamily: FONT,
+  },
+});
+
+/* ───── Battle ───── */
+
 function BattleTab({
-  language,
   petTemplateName,
   petTemplateElement,
   queuePending,
   queueResult,
   onQueue,
 }: {
-  language: AppLanguage;
   petTemplateName?: string;
   petTemplateElement?: ElementType;
   queuePending: boolean;
   queueResult?: { matched: boolean; battleId?: string };
   onQueue: () => void;
 }) {
+  const { c } = useTheme();
+  const { language } = useSessionStore();
   const t = getCopy(language);
   const elements: ElementType[] = ["fire", "water", "grass", "electric", "digital"];
   const fighterLabel = petTemplateName && petTemplateElement
     ? `${petTemplateName} / ${getElementLabel(language, petTemplateElement)}`
     : t.battle.none;
 
+  const elementEmoji: Record<ElementType, string> = {
+    fire: "🔥", water: "💧", grass: "🌿", electric: "⚡", digital: "💠",
+  };
+
   return (
     <>
-      <PixelCard title={t.battle.title} accent={colors.orange}>
-        <View style={styles.battleHero}>
-          <Text style={styles.infoHeadline}>{t.battle.currentFighter(fighterLabel)}</Text>
-          <Text style={styles.infoBody}>{t.battle.rule}</Text>
-          <Pressable style={[styles.arcadeButtonLarge, !petTemplateName && styles.dimmedButton]} disabled={!petTemplateName} onPress={onQueue}>
-            <Text style={styles.arcadeButtonLargeText}>{queuePending ? t.battle.matching : t.battle.enterQueue}</Text>
-          </Pressable>
-          {queueResult ? <Text style={styles.successText}>{queueResult.matched ? t.battle.matched(queueResult.battleId) : t.battle.waiting}</Text> : null}
-        </View>
-      </PixelCard>
-      <PixelCard title={t.battle.elementGrid} accent={colors.gold}>
-        <View style={styles.matchupList}>
-          {elements.map((element) => {
-            const strong = elements.find((target) => getElementAdvantageTier(element, target) === "strong");
-            const weak = elements.find((target) => getElementAdvantageTier(element, target) === "weak");
-            return (
-              <View key={element} style={styles.matchupItem}>
-                <View style={[styles.matchupBadge, { backgroundColor: elementAccent[element] }]}>
-                  <Text style={styles.matchupBadgeText}>{getElementLabel(language, element)}</Text>
-                </View>
-                <Text style={styles.matchupCopy}>{t.battle.strong} {strong ? getElementLabel(language, strong) : "-"} / {t.battle.edge} {weak ? getElementLabel(language, weak) : "-"}</Text>
+      <View style={styles.battleHeader}>
+        <Text style={[styles.battleTitle, { color: c.text }]}>{t.battle.title}</Text>
+        <Text style={[styles.battleBody, { color: c.text }]}>{t.battle.currentFighter(fighterLabel)}</Text>
+        <Text style={[styles.battleMuted, { color: c.gray }]}>{t.battle.rule}</Text>
+        <Pressable
+          style={[styles.enterButton, { borderColor: c.divider }, !petTemplateName && styles.actionButtonDisabled]}
+          disabled={!petTemplateName}
+          onPress={onQueue}
+        >
+          <Text style={[styles.battleBtnText, { color: c.text }]}>
+            {queuePending ? t.battle.matching : t.battle.enterQueue}
+          </Text>
+        </Pressable>
+        {queueResult ? (
+          <Text style={[styles.battleBody, { color: c.text }]}>
+            {queueResult.matched ? t.battle.matched(queueResult.battleId) : t.battle.waiting}
+          </Text>
+        ) : null}
+      </View>
+
+      <View style={[styles.divider, { backgroundColor: c.divider }]} />
+      <Text style={[styles.battleGridLabel, { color: c.grayDark }]}>{t.battle.elementGrid}</Text>
+      <View style={styles.elementList}>
+        {elements.map((element) => {
+          const strong = elements.find((target) => getElementAdvantageTier(element, target) === "strong");
+          const weak = elements.find((target) => getElementAdvantageTier(element, target) === "weak");
+          return (
+            <View key={element} style={[styles.elementCard, { borderBottomColor: c.divider }]}>
+              <View style={styles.elementHeader}>
+                <Text style={styles.elementEmoji}>{elementEmoji[element]}</Text>
+                <Text style={[styles.elementNameBig, { color: c.text }]}>{getElementLabel(language, element)}</Text>
               </View>
-            );
-          })}
-        </View>
-      </PixelCard>
+              <View style={styles.elementAdvantages}>
+                <View style={styles.elementAdvCol}>
+                  <Text style={[styles.elementAdvLabel, { color: c.gray }]}>{t.battle.strong}</Text>
+                  <Text style={styles.elementAdvEmoji}>{strong ? elementEmoji[strong] : "-"}</Text>
+                  <Text style={[styles.elementAdvValue, { color: c.text }]}>{strong ? getElementLabel(language, strong) : "-"}</Text>
+                </View>
+                <View style={styles.elementAdvCol}>
+                  <Text style={[styles.elementAdvLabel, { color: c.gray }]}>{t.battle.edge}</Text>
+                  <Text style={styles.elementAdvEmoji}>{weak ? elementEmoji[weak] : "-"}</Text>
+                  <Text style={[styles.elementAdvValue, { color: c.text }]}>{weak ? getElementLabel(language, weak) : "-"}</Text>
+                </View>
+              </View>
+            </View>
+          );
+        })}
+      </View>
     </>
   );
 }
 
+/* ───── Collection ───── */
+
 function CollectionTab({
-  language,
   currentTemplateId,
   collectionPreview,
 }: {
-  language: AppLanguage;
   currentTemplateId?: string;
   collectionPreview: typeof PET_TEMPLATES;
 }) {
+  const { c } = useTheme();
+  const { language } = useSessionStore();
   const t = getCopy(language);
   return (
-    <PixelCard title={t.collection.title} accent={colors.orange}>
-      <Text style={styles.infoBody}>{t.collection.body}</Text>
+    <>
+      <Text style={[styles.sectionTitle, { color: c.text }]}>{t.collection.title}</Text>
+      <Text style={[styles.bodyMuted, { color: c.gray }]}>{t.collection.body}</Text>
       <View style={styles.collectionGrid}>
         {collectionPreview.map((template) => {
           const active = template.id === currentTemplateId;
           return (
-            <View key={template.id} style={[styles.collectionItem, active && styles.collectionItemActive]}>
-              <View style={styles.collectionHeader}>
-                <Text style={styles.collectionName}>{template.name}</Text>
-                <Text style={styles.collectionRarity}>{t.common.rarity[template.rarity]}</Text>
-              </View>
+            <View key={template.id} style={[styles.collectionItem, { borderBottomColor: active ? c.text : c.divider }]}>
               <PetSprite
                 element={template.element}
                 name={getElementLabel(language, template.element)}
                 templateId={template.id}
                 size={7}
               />
-              <Text style={styles.collectionMotif}>{template.motif}</Text>
+              <Text style={[styles.collectionName, { color: c.text }]}>{template.name}</Text>
+              <Text style={[styles.collectionMeta, { color: c.grayDark }]}>{t.common.rarity[template.rarity]}</Text>
+              <Text style={[styles.collectionMotif, { color: c.gray }]}>{template.motif}</Text>
             </View>
           );
         })}
       </View>
-    </PixelCard>
+    </>
   );
 }
 
+/* ───── Profile ───── */
+
 function ProfileTab({
-  language,
   onLanguageChange,
   userName,
   provider,
   premiumStatus,
 }: {
-  language: AppLanguage;
   onLanguageChange: (language: AppLanguage) => void;
   userName?: string;
   provider?: string;
   premiumStatus?: string;
 }) {
+  const { c, mode, toggle } = useTheme();
+  const { language } = useSessionStore();
   const t = getCopy(language);
   return (
     <>
-      <PixelCard title={t.profile.title} accent={colors.gold}>
-        <View style={styles.infoBoard}>
-          <InfoTile label={t.profile.name} value={userName ?? t.profile.defaultName} />
-          <InfoTile label={t.profile.login} value={(provider ?? "google").toUpperCase()} />
-          <InfoTile label={t.profile.pass} value={(premiumStatus ?? "free").toUpperCase()} />
-        </View>
-      </PixelCard>
-      <PixelCard title={t.profile.settingsTitle} accent={colors.orange}>
-        <Text style={styles.infoBody}>{t.profile.settingsBody}</Text>
-        <View style={styles.languageToggleRow}>
-          <Pressable style={[styles.arcadeButtonMedium, language === "ko" && styles.arcadeButtonMediumActive]} onPress={() => onLanguageChange("ko")}><Text style={styles.arcadeButtonMediumText}>{t.profile.korean}</Text></Pressable>
-          <Pressable style={[styles.arcadeButtonMedium, language === "en" && styles.arcadeButtonMediumActive]} onPress={() => onLanguageChange("en")}><Text style={styles.arcadeButtonMediumText}>{t.profile.english}</Text></Pressable>
-        </View>
-      </PixelCard>
-      <PixelCard title={t.profile.premiumTitle} accent={colors.red}>
-        <Text style={styles.infoBody}>{t.profile.premium1}</Text>
-        <Text style={styles.infoBody}>{t.profile.premium2}</Text>
-        <Text style={styles.infoBody}>{t.profile.premium3}</Text>
-      </PixelCard>
+      <Text style={[styles.profileTitle, { color: c.text }]}>{t.profile.title}</Text>
+      <View style={styles.profileInfo}>
+        <ProfileRow label={t.profile.name} value={userName ?? t.profile.defaultName} />
+        <ProfileRow label={t.profile.login} value={(provider ?? "google").toUpperCase()} />
+        <ProfileRow label={t.profile.pass} value={(premiumStatus ?? "free").toUpperCase()} />
+      </View>
+
+      <View style={[styles.divider, { backgroundColor: c.divider }]} />
+      <Text style={[styles.profileSectionLabel, { color: c.grayDark }]}>
+        {language === "ko" ? "테마" : "theme"}
+      </Text>
+      <View style={styles.langRow}>
+        <Pressable onPress={toggle}>
+          <Text style={[styles.profileOption, { color: c.text }]}>
+            {mode === "dark"
+              ? (language === "ko" ? "라이트 모드로 전환" : "switch to light")
+              : (language === "ko" ? "다크 모드로 전환" : "switch to dark")}
+          </Text>
+        </Pressable>
+      </View>
+
+      <View style={[styles.divider, { backgroundColor: c.divider }]} />
+      <Text style={[styles.profileSectionLabel, { color: c.grayDark }]}>{t.profile.settingsTitle}</Text>
+      <Text style={[styles.profileBody, { color: c.gray }]}>{t.profile.settingsBody}</Text>
+      <View style={styles.langRow}>
+        <Pressable onPress={() => onLanguageChange("ko")}>
+          <Text style={[styles.profileOption, { color: language === "ko" ? c.text : c.grayDark }]}>
+            {t.profile.korean}
+          </Text>
+        </Pressable>
+        <Pressable onPress={() => onLanguageChange("en")}>
+          <Text style={[styles.profileOption, { color: language === "en" ? c.text : c.grayDark }]}>
+            {t.profile.english}
+          </Text>
+        </Pressable>
+      </View>
+
+      <View style={[styles.divider, { backgroundColor: c.divider }]} />
+      <Text style={[styles.profileSectionLabel, { color: c.grayDark }]}>{t.profile.premiumTitle}</Text>
+      <Text style={[styles.profileBody, { color: c.gray }]}>{t.profile.premium1}</Text>
+      <Text style={[styles.profileBody, { color: c.gray }]}>{t.profile.premium2}</Text>
+      <Text style={[styles.profileBody, { color: c.gray }]}>{t.profile.premium3}</Text>
     </>
   );
 }
 
-function InfoTile({ label, value }: { label: string; value: string }) {
+function ProfileRow({ label, value }: { label: string; value: string }) {
+  const { c } = useTheme();
   return (
-    <View style={styles.infoTile}>
-      <Text style={styles.infoTileLabel}>{label}</Text>
-      <Text style={styles.infoTileValue}>{value}</Text>
+    <View style={[styles.profileRow, { borderBottomColor: c.divider }]}>
+      <Text style={[styles.profileLabel, { color: c.gray }]}>{label}</Text>
+      <Text style={[styles.profileValue, { color: c.text }]}>{value}</Text>
     </View>
   );
 }
 
-function SegmentMeter({ label, value, accent }: { label: string; value: number; accent: string }) {
-  const activeCount = Math.max(0, Math.min(10, Math.round(value / 10)));
-  return (
-    <View style={styles.segmentRow}>
-      <Text style={styles.segmentLabel}>{label}</Text>
-      <View style={styles.segmentTrack}>
-        {Array.from({ length: 10 }).map((_, index) => (
-          <View key={`${label}-${index}`} style={[styles.segmentCell, index < activeCount ? { backgroundColor: accent } : styles.segmentCellOff]} />
-        ))}
-      </View>
-      <Text style={styles.segmentValue}>{value}</Text>
-    </View>
-  );
-}
+/* ───── Root ───── */
 
 export default function App() {
+  const [fontsLoaded] = useFonts({ PressStart2P_400Regular });
+  const [themeMode, setThemeMode] = useState<ThemeMode>("dark");
+
+  useEffect(() => {
+    AsyncStorage.getItem(THEME_KEY).then((saved) => {
+      if (saved === "dark" || saved === "light") setThemeMode(saved);
+    }).catch(() => undefined);
+  }, []);
+
+  const toggle = useCallback(() => {
+    setThemeMode((prev) => {
+      const next = prev === "dark" ? "light" : "dark";
+      AsyncStorage.setItem(THEME_KEY, next).catch(() => undefined);
+      return next;
+    });
+  }, []);
+
+  const themeValue = useMemo(() => ({
+    mode: themeMode,
+    c: getTheme(themeMode),
+    toggle,
+  }), [themeMode, toggle]);
+
+  if (!fontsLoaded) return null;
+
   return (
-    <QueryClientProvider client={queryClient}>
-      <AppShell />
-    </QueryClientProvider>
+    <ThemeContext.Provider value={themeValue}>
+      <QueryClientProvider client={queryClient}>
+        <AppShell />
+      </QueryClientProvider>
+    </ThemeContext.Provider>
   );
 }
 
+/* ───── Styles ───── */
+
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: colors.bg },
-  wallpaper: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.bg },
-  content: { paddingHorizontal: 16, paddingTop: 18, gap: 18 },
-  splashPage: { flex: 1, backgroundColor: colors.bgDeep, justifyContent: "center", alignItems: "center", padding: 24 },
-  monitorShell: { backgroundColor: colors.bezelShadow, paddingRight: 8, paddingBottom: 8 },
-  monitorFrame: { width: "100%", borderWidth: 4, borderColor: colors.line, backgroundColor: colors.bezel, padding: 12 },
-  monitorScreen: { borderWidth: 4, borderColor: colors.line, backgroundColor: colors.screen, minHeight: 260, justifyContent: "center", alignItems: "center", padding: 20, gap: 8 },
-  monitorScreenLarge: { borderWidth: 4, borderColor: colors.line, backgroundColor: colors.screen, padding: 14, gap: 12 },
-  monitorPower: { alignSelf: "flex-end", marginTop: 10, width: 28, height: 28, borderWidth: 3, borderColor: colors.line, backgroundColor: colors.panel, alignItems: "center", justifyContent: "center" },
-  powerDot: { width: 10, height: 10, borderWidth: 2, borderColor: colors.line, backgroundColor: colors.gold },
-  bootKicker: { color: colors.ink, fontSize: 13, fontWeight: "900", letterSpacing: 2 },
-  bootTitle: { color: colors.ink, fontSize: 34, lineHeight: 36, fontWeight: "900" },
-  bootHint: { marginTop: 8, color: colors.panel, fontSize: 13, fontWeight: "700" },
-  loginHeadline: { color: colors.ink, fontSize: 28, lineHeight: 30, fontWeight: "900" },
-  loginCopy: { color: colors.panel, fontSize: 14, lineHeight: 20, textAlign: "center", maxWidth: 280 },
-  petStage: { gap: 12, alignItems: "center" },
-  petStageHeader: { width: "100%", flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  stageLabel: { color: colors.ink, fontSize: 12, fontWeight: "900", backgroundColor: colors.bezelLight, borderWidth: 3, borderColor: colors.line, paddingHorizontal: 8, paddingVertical: 4 },
-  petStageInner: { width: "100%", minHeight: 280, borderWidth: 4, borderColor: colors.line, backgroundColor: colors.screen2, justifyContent: "center", alignItems: "center", paddingVertical: 18 },
-  stageName: { color: colors.ink, fontSize: 20, fontWeight: "900", textTransform: "uppercase", letterSpacing: 1 },
-  emptyScreen: { width: "100%", borderWidth: 4, borderColor: colors.line, backgroundColor: colors.screen2, padding: 16, gap: 8 },
-  emptyHeadline: { color: colors.ink, fontSize: 24, lineHeight: 28, fontWeight: "900" },
-  emptyBody: { color: colors.panel, fontSize: 14, lineHeight: 20, fontWeight: "700" },
-  nicknameWindow: { width: "100%", borderWidth: 4, borderColor: colors.line, backgroundColor: colors.bezel, padding: 8, gap: 10 },
-  windowTitleBar: { minHeight: 28, borderWidth: 3, borderColor: colors.line, backgroundColor: colors.orange, justifyContent: "center", paddingHorizontal: 10 },
-  windowTitle: { color: colors.ink, fontSize: 12, fontWeight: "900", letterSpacing: 1 },
-  nicknameInput: { borderWidth: 4, borderColor: colors.line, backgroundColor: colors.screen2, color: colors.ink, fontSize: 16, fontWeight: "800", paddingHorizontal: 12, paddingVertical: 10 },
-  nicknameActionRow: { flexDirection: "row", justifyContent: "space-between", gap: 8 },
-  infoBoard: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  infoTile: { minWidth: 96, flex: 1, borderWidth: 4, borderColor: colors.line, backgroundColor: colors.screen2, padding: 10, gap: 4 },
-  infoTileLabel: { color: colors.panel, fontSize: 10, fontWeight: "900", letterSpacing: 1 },
-  infoTileValue: { color: colors.ink, fontSize: 15, fontWeight: "900" },
-  meterList: { gap: 10 },
-  segmentRow: { gap: 6 },
-  segmentLabel: { color: colors.ink, fontSize: 11, fontWeight: "900", letterSpacing: 1 },
-  segmentTrack: { flexDirection: "row", gap: 4, borderWidth: 4, borderColor: colors.line, backgroundColor: colors.panel, padding: 4 },
-  segmentCell: { flex: 1, height: 14, borderWidth: 2, borderColor: colors.line },
-  segmentCellOff: { backgroundColor: colors.bg },
-  segmentValue: { color: colors.ink, fontSize: 11, fontWeight: "900", alignSelf: "flex-end" },
-  arcadeButtonGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  arcadeButtonLarge: { minHeight: 52, borderWidth: 4, borderColor: colors.line, backgroundColor: colors.orange, paddingHorizontal: 18, justifyContent: "center", alignItems: "center", shadowColor: colors.orangeDeep, shadowOpacity: 1, shadowOffset: { width: 4, height: 4 }, shadowRadius: 0 },
-  arcadeButtonLargeText: { color: colors.ink, fontSize: 16, fontWeight: "900", letterSpacing: 1 },
-  arcadeButtonMedium: { minWidth: 140, flex: 1, minHeight: 48, borderWidth: 4, borderColor: colors.line, backgroundColor: colors.orange, justifyContent: "center", alignItems: "center", paddingHorizontal: 12, shadowColor: colors.orangeDeep, shadowOpacity: 1, shadowOffset: { width: 4, height: 4 }, shadowRadius: 0 },
-  arcadeButtonMediumActive: { backgroundColor: colors.gold },
-  arcadeButtonMediumText: { color: colors.ink, fontSize: 13, fontWeight: "900", letterSpacing: 1, textTransform: "uppercase" },
-  arcadeButtonSmall: { flex: 1, minHeight: 42, borderWidth: 4, borderColor: colors.line, backgroundColor: colors.orange, justifyContent: "center", alignItems: "center", paddingHorizontal: 10 },
-  arcadeButtonSmallText: { color: colors.ink, fontSize: 12, fontWeight: "900" },
-  dimmedButton: { opacity: 0.45 },
-  infoHeadline: { color: colors.ink, fontSize: 18, lineHeight: 22, fontWeight: "900" },
-  infoBody: { color: colors.ink, fontSize: 13, lineHeight: 18, fontWeight: "700" },
-  errorText: { color: colors.red, fontSize: 12, fontWeight: "900" },
-  successText: { color: colors.red, fontSize: 12, fontWeight: "900" },
-  battleHero: { gap: 12 },
-  matchupList: { gap: 10 },
-  matchupItem: { borderWidth: 4, borderColor: colors.line, backgroundColor: colors.screen2, padding: 10, gap: 8 },
-  matchupBadge: { alignSelf: "flex-start", borderWidth: 3, borderColor: colors.line, paddingHorizontal: 8, paddingVertical: 4 },
-  matchupBadgeText: { color: colors.ink, fontSize: 11, fontWeight: "900" },
-  matchupCopy: { color: colors.ink, fontSize: 12, fontWeight: "800" },
-  collectionGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  collectionItem: { width: "47%", borderWidth: 4, borderColor: colors.line, backgroundColor: colors.screen2, padding: 10, gap: 8 },
-  collectionItemActive: { backgroundColor: "#dff0b2" },
-  collectionHeader: { gap: 2 },
-  collectionName: { color: colors.ink, fontSize: 13, fontWeight: "900" },
-  collectionRarity: { color: colors.orangeDeep, fontSize: 10, fontWeight: "900" },
-  collectionMotif: { color: colors.panel, fontSize: 11, lineHeight: 15, fontWeight: "700" },
-  languageToggleRow: { flexDirection: "row", gap: 10 },
-  tabDock: { position: "absolute", left: 12, right: 12, bottom: 12, flexDirection: "row", gap: 8 },
-  tabButton: { flex: 1, minHeight: 52, borderWidth: 4, borderColor: colors.line, backgroundColor: colors.orange, justifyContent: "center", alignItems: "center", shadowColor: colors.orangeDeep, shadowOpacity: 1, shadowOffset: { width: 4, height: 4 }, shadowRadius: 0 },
-  tabButtonActive: { backgroundColor: colors.gold },
-  tabButtonText: { color: colors.ink, fontSize: 12, fontWeight: "900", textTransform: "uppercase", letterSpacing: 1 },
-  bottomSpacer: { height: 98 },
+  page: { flex: 1 },
+  content: { paddingHorizontal: 24, paddingTop: 56, gap: 24 },
+  splashPage: { flex: 1, justifyContent: "center", alignItems: "center", padding: 24, gap: 4 },
+  bottomSpacer: { height: 96 },
+
+  splashKicker: { fontSize: 10, fontFamily: FONT, letterSpacing: 2, marginBottom: 12 },
+  splashTitle: { fontSize: 24, fontFamily: FONT, letterSpacing: 4 },
+
+  loginHeadline: { fontSize: 18, fontFamily: FONT, marginTop: 16 },
+  loginCopy: { fontSize: 10, fontFamily: FONT, lineHeight: 22, textAlign: "center", maxWidth: 300, marginTop: 8 },
+  enterButton: { marginTop: 20, borderWidth: 2, paddingHorizontal: 32, paddingVertical: 14 },
+  enterButtonText: { fontSize: 10, fontFamily: FONT, letterSpacing: 2, textTransform: "lowercase" },
+
+  divider: { height: 2 },
+  sectionTitle: { fontSize: 14, fontFamily: FONT, letterSpacing: 1 },
+  sectionLabel: { fontSize: 10, fontFamily: FONT, letterSpacing: 2, textTransform: "lowercase" },
+  bodyText: { fontSize: 10, fontFamily: FONT, lineHeight: 22 },
+  bodyMuted: { fontSize: 9, fontFamily: FONT, lineHeight: 20 },
+
+  petInfoRow: { flexDirection: "row", minHeight: 240 },
+  petImageArea: { width: "70%", justifyContent: "center", alignItems: "center", paddingVertical: 40 },
+  petImageBorder: { position: "absolute", bottom: 0, left: 0, right: 0, height: 2 },
+  petMetaArea: { width: "30%", paddingLeft: 16, justifyContent: "center", gap: 6 },
+  metaLabel: { fontSize: 11, fontFamily: FONT, textTransform: "lowercase", marginTop: 10 },
+  metaValue: { fontSize: 12, fontFamily: FONT },
+  metaValueBold: { fontSize: 13, fontFamily: FONT, fontWeight: "700" },
+  metaValueItalic: { fontSize: 11, fontFamily: FONT, fontStyle: "italic", textTransform: "lowercase" },
+
+  dotExpRow: { flexDirection: "row", gap: 2, marginTop: 2 },
+  dotExpCell: { width: 5, height: 5 },
+
+  emptySection: { gap: 12 },
+  emptyHeadline: { fontSize: 16, fontFamily: FONT },
+  emptyBody: { fontSize: 10, fontFamily: FONT, lineHeight: 22 },
+
+  nicknameBlock: { gap: 10, marginTop: 8 },
+  nicknameInput: { borderBottomWidth: 2, fontSize: 12, fontFamily: FONT, paddingVertical: 8 },
+  nicknameActions: { flexDirection: "row", gap: 24 },
+  actionTextGray: { fontSize: 10, fontFamily: FONT, textTransform: "lowercase" },
+  actionTextWhite: { fontSize: 10, fontFamily: FONT, textTransform: "lowercase" },
+
+  statusSection: { gap: 18 },
+  statRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  statLabel: { width: 80, fontSize: 11, fontFamily: FONT, textTransform: "lowercase" },
+  statTrack: { flex: 1, height: 4 },
+  statFill: { height: 4 },
+  statValue: { width: 36, fontSize: 11, fontFamily: FONT, textAlign: "right" },
+
+  actionRow: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
+  actionButtonWrap: { width: "47%", position: "relative" as const },
+  actionButton: { width: "100%", alignItems: "center", paddingVertical: 14, borderWidth: 2 },
+  actionButtonDisabled: { opacity: 0.3 },
+  actionInner: { alignItems: "center", gap: 8 },
+  actionLabel: { fontSize: 9, fontFamily: FONT, textTransform: "lowercase" },
+
+  errorText: { fontSize: 9, fontFamily: FONT, marginTop: 8 },
+
+  battleHeader: { gap: 12 },
+  battleTitle: { fontSize: 18, fontFamily: FONT, letterSpacing: 1 },
+  battleBody: { fontSize: 12, fontFamily: FONT, lineHeight: 24 },
+  battleMuted: { fontSize: 11, fontFamily: FONT, lineHeight: 22 },
+  battleBtnText: { fontSize: 12, fontFamily: FONT, letterSpacing: 2, textTransform: "lowercase" },
+  battleGridLabel: { fontSize: 13, fontFamily: FONT, letterSpacing: 2, textTransform: "lowercase" },
+  elementList: { gap: 12 },
+  elementCard: { paddingVertical: 12, borderBottomWidth: 2, gap: 8 },
+  elementHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
+  elementEmoji: { fontSize: 20 },
+  elementNameBig: { fontSize: 14, fontFamily: FONT },
+  elementAdvantages: { flexDirection: "row", gap: 24, paddingLeft: 30 },
+  elementAdvCol: { alignItems: "center", gap: 4 },
+  elementAdvLabel: { fontSize: 9, fontFamily: FONT, textTransform: "lowercase" },
+  elementAdvEmoji: { fontSize: 16 },
+  elementAdvValue: { fontSize: 11, fontFamily: FONT },
+
+  collectionGrid: { flexDirection: "row", flexWrap: "wrap", gap: 16 },
+  collectionItem: { width: "46%", alignItems: "center", gap: 6, paddingVertical: 12, borderBottomWidth: 2 },
+  collectionName: { fontSize: 10, fontFamily: FONT },
+  collectionMeta: { fontSize: 8, fontFamily: FONT, textTransform: "lowercase" },
+  collectionMotif: { fontSize: 8, fontFamily: FONT, textAlign: "center", lineHeight: 16 },
+
+  profileTitle: { fontSize: 16, fontFamily: FONT, letterSpacing: 1 },
+  profileSectionLabel: { fontSize: 12, fontFamily: FONT, letterSpacing: 2, textTransform: "lowercase" },
+  profileBody: { fontSize: 11, fontFamily: FONT, lineHeight: 22 },
+  profileInfo: { gap: 8 },
+  profileRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 6, borderBottomWidth: 2 },
+  profileLabel: { fontSize: 12, fontFamily: FONT, textTransform: "lowercase" },
+  profileValue: { fontSize: 12, fontFamily: FONT },
+  langRow: { flexDirection: "row", gap: 24 },
+  langOption: { fontSize: 10, fontFamily: FONT, paddingVertical: 6 },
+  profileOption: { fontSize: 12, fontFamily: FONT, paddingVertical: 6 },
+
+  tabDock: { position: "absolute", left: 0, right: 0, bottom: 0, flexDirection: "row", borderTopWidth: 2 },
+  tabButton: { flex: 1, alignItems: "center", paddingVertical: 20 },
+  tabLabel: { fontSize: 13, fontFamily: FONT, letterSpacing: 2, textTransform: "lowercase" },
 });

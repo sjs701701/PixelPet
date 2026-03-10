@@ -1,31 +1,59 @@
-export const colors = {
-  bg: "#34387a",
-  bgDeep: "#2a2e6a",
-  bgStripe: "#2e3273",
-  bezel: "#b8b1ab",
-  bezelShadow: "#7e7680",
-  bezelLight: "#f3efe6",
-  screen: "#7ecfd9",
-  screen2: "#bfe8dc",
-  panel: "#3a3f86",
-  panel2: "#4a4f96",
-  line: "#26224f",
-  ink: "#25214d",
-  white: "#fffdf4",
-  cream: "#f4eccf",
-  muted: "#d4cdb8",
-  orange: "#ef7d35",
-  orangeDeep: "#b94b2a",
-  gold: "#f2c94c",
-  mint: "#7ecf9a",
-  sky: "#78d7e3",
-  coral: "#ff8b42",
-  red: "#e35d3d",
-  violet: "#7d7cf2",
-  pixelGrass: "#72cf54",
-  pixelWater: "#4d9be6",
+export type ThemeMode = "dark" | "light";
+
+export type ThemeColors = {
+  bg: string;
+  text: string;
+  gray: string;
+  grayDark: string;
+  accent: string;
+  divider: string;
+  barTrack: string;
+  barFill: string;
+  transparent: string;
+  pixelFire: string;
+  pixelWater: string;
+  pixelGrass: string;
+  pixelElectric: string;
+  pixelDigital: string;
+};
+
+const dark: ThemeColors = {
+  bg: "#0A0A0A",
+  text: "#FFFFFF",
+  gray: "#9A9A9A",
+  grayDark: "#707070",
+  accent: "#FF3C3C",
+  divider: "#2A2A2A",
+  barTrack: "#222222",
+  barFill: "#FFFFFF",
+  transparent: "transparent",
   pixelFire: "#ff6b35",
+  pixelWater: "#4d9be6",
+  pixelGrass: "#72cf54",
   pixelElectric: "#ffd23f",
   pixelDigital: "#a15cff",
-  shadow: "#18153c",
 };
+
+const light: ThemeColors = {
+  bg: "#F5F5F0",
+  text: "#0A0A0A",
+  gray: "#777777",
+  grayDark: "#999999",
+  accent: "#FF3C3C",
+  divider: "#E0E0DA",
+  barTrack: "#E0E0DA",
+  barFill: "#0A0A0A",
+  transparent: "transparent",
+  pixelFire: "#ff6b35",
+  pixelWater: "#4d9be6",
+  pixelGrass: "#72cf54",
+  pixelElectric: "#ffd23f",
+  pixelDigital: "#a15cff",
+};
+
+export function getTheme(mode: ThemeMode): ThemeColors {
+  return mode === "light" ? light : dark;
+}
+
+// backward compat default
+export const colors = dark;

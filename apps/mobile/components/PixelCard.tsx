@@ -1,74 +1,35 @@
 import { PropsWithChildren } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { colors } from "../theme/colors";
+import { useTheme } from "../theme/ThemeContext";
 
 type PixelCardProps = PropsWithChildren<{
   title: string;
   accent?: string;
 }>;
 
-export function PixelCard({ title, accent = colors.orange, children }: PixelCardProps) {
+export function PixelCard({ title, children }: PixelCardProps) {
+  const { c } = useTheme();
   return (
-    <View style={styles.shell}>
-      <View style={styles.bezel}>
-        <View style={[styles.header, { backgroundColor: accent }]}>
-          <Text style={styles.title}>{title}</Text>
-          <View style={styles.headerDots}>
-            <View style={styles.headerDot} />
-            <View style={styles.headerDot} />
-          </View>
-        </View>
-        <View style={styles.screen}>{children}</View>
-      </View>
+    <View style={[styles.section, { borderTopColor: c.divider }]}>
+      <Text style={[styles.title, { color: c.grayDark }]}>{title}</Text>
+      <View style={styles.content}>{children}</View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  shell: {
-    backgroundColor: colors.bezelShadow,
-    paddingRight: 6,
-    paddingBottom: 6,
-  },
-  bezel: {
-    borderWidth: 4,
-    borderColor: colors.line,
-    backgroundColor: colors.bezel,
-    padding: 10,
-  },
-  header: {
-    minHeight: 30,
-    borderWidth: 3,
-    borderColor: colors.line,
-    paddingHorizontal: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+  section: {
+    borderTopWidth: 1,
+    paddingTop: 20,
+    gap: 14,
   },
   title: {
-    color: colors.ink,
-    fontSize: 13,
-    fontWeight: "900",
+    fontSize: 10,
+    fontFamily: "PressStart2P_400Regular",
     letterSpacing: 1,
-    textTransform: "uppercase",
+    textTransform: "lowercase",
   },
-  headerDots: {
-    flexDirection: "row",
-    gap: 4,
-  },
-  headerDot: {
-    width: 10,
-    height: 10,
-    borderWidth: 2,
-    borderColor: colors.line,
-    backgroundColor: colors.bezelLight,
-  },
-  screen: {
-    marginTop: 8,
-    borderWidth: 4,
-    borderColor: colors.line,
-    backgroundColor: colors.screen,
-    padding: 14,
-    gap: 12,
+  content: {
+    gap: 14,
   },
 });

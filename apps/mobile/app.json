@@ -9,6 +9,9 @@
     },
     "ios": {
       "bundleIdentifier": "com.pixelpetarena.mobile"
-    }
+    },
+    "plugins": [
+      "expo-font"
+    ]
   }
 }

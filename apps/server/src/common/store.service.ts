@@ -54,7 +54,7 @@ export class StoreService {
       ownerId: userId,
       templateId: template.id,
       level: 1,
-      experience: 0,
+      experience: 35,
       careState: { ...DEFAULT_CARE_STATE },
       inventoryLoadout: {},
       cosmeticLoadout: {},

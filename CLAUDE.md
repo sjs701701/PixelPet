@@ -2,11 +2,86 @@
 
 Tamagotchi-style pet battle game. Monorepo with npm workspaces.
 
+
 ## Structure
 
 - `apps/mobile` — Expo + React Native mobile client
 - `apps/server` — NestJS API + WebSocket server (port 3001)
 - `packages/shared` — shared types, game logic, pet templates
+
+## Design Guide
+
+### Theme
+
+Retro pixel/dot style. Dark mode (default) and light mode supported.
+
+- Font: Press Start 2P (pixel font, via @expo-google-fonts/press-start-2p)
+- Style: minimal pixel — text-label-driven, no decorative elements, no rounded corners (border-radius: 0)
+- Accent color: #FF3C3C — used ONLY when a stat drops below 30%. Never used globally.
+- Section dividers: 2px solid
+- Icons: custom PNG icons (32x32, white on transparent, tintColor applied) in `assets/icons/`
+
+### Dark Mode (default)
+
+- Background: #0A0A0A
+- Text: #FFFFFF
+- Secondary text: #9A9A9A / #707070
+- Divider: #2A2A2A
+- Bar track: #222222, bar fill: #FFFFFF
+- Accent: #FF3C3C (threshold only)
+
+### Light Mode
+
+- Background: #F5F5F0
+- Text: #0A0A0A
+- Secondary text: #777777 / #999999
+- Divider: #E0E0DA
+- Bar track: #E0E0DA, bar fill: #0A0A0A
+- Accent: #FF3C3C (threshold only)
+
+### Theme System
+
+- `theme/colors.ts` — ThemeColors type, getTheme(mode) function, dark/light palettes
+- `theme/ThemeContext.tsx` — React context providing { mode, c (colors), toggle() }
+- Theme preference persisted in AsyncStorage ("pixelpet.theme")
+- Toggle button in Profile tab
+
+### Layout (Home tab, top to bottom)
+
+Section 1 — Pet Info
+- Horizontal split (flex-row)
+- Left 70%: pixel art pet on pure background, no frame, no bottom border
+- Right 30%: pet metadata stacked vertically (속성, 종족, 이름, Lv. + EXP dot bar)
+  - 종족 = template name (e.g. Pyron), 이름 = user-given nickname
+  - Font sizes: labels 11px, values 12px, species bold 13px
+  - Generous spacing between groups (metaLabel marginTop: 10, Lv. marginTop: 14)
+
+Section 2 — Status Bars
+- Five stats vertically: 배고픔 / 기분 / 청결 / 에너지 / 유대감
+- Each row: [label 11px] [bar] [value 11px], gap: 18
+- Bar height: 4px, no border-radius, label width: 80
+- If stat < 30%: accent color (#FF3C3C) on bar fill, label, and value
+
+Section 3 — Action Buttons
+- Four buttons in 2x2 grid: 먹이 / 씻기기 / 놀기 / 쉬기
+- Custom PNG icon (32x32, tintColor) above label
+- Border: 2px solid divider color
+- On press: icon + label brighten to text color
+- 10-second cooldown per action: all buttons disabled, clockwise quadrant sweep overlay with countdown timer on the pressed button
+- Disabled: opacity 0.3
+
+Section 4 — Tab Bar
+- 4 tabs: 홈 / 배틀 / 도감 / 설정
+- Font size: 13px, padding: 20px vertical
+- Border top: 2px solid divider
+
+### Rules
+
+- No border-radius anywhere
+- No gradients, no shadows, no decorative fills
+- No color except bg, text, gray, and accent (#FF3C3C for threshold only)
+- All typography: Press Start 2P pixel font
+- Pixel art pet image sits naturally on background with no frame
 
 ## Commands
 
@@ -33,17 +108,21 @@ npx expo start             # then press 'a' for Android emulator
 - React Query / TanStack Query (server state)
 - Vitest (testing)
 - Prisma (schema exists but not active — currently in-memory store)
+- Press Start 2P (pixel font via @expo-google-fonts/press-start-2p)
 
 ## Key Files
 
 ### Mobile (`apps/mobile/`)
-- `App.tsx` — main app with tab navigation and auth flow
+- `App.tsx` — main app with tab navigation, auth flow, theme provider
 - `lib/api.ts` — HTTP client (base URL: `10.0.2.2:3001` for emulator)
 - `lib/store.ts` — Zustand session store (user, token, pet, language)
 - `lib/i18n.ts` — i18n (ko/en)
 - `components/PetSprite.tsx` — pixel art pet renderer with animation
-- `components/PixelCard.tsx` — reusable retro card UI
-- `theme/colors.ts` — color palette
+- `components/PixelCard.tsx` — minimal section divider card
+- `components/PixelIcon.tsx` — PNG-based icon component (tintColor, 32x32)
+- `assets/icons/` — care action icon PNGs (feed, clean, play, rest)
+- `theme/colors.ts` — dark/light color palettes, ThemeColors type
+- `theme/ThemeContext.tsx` — React context for theme (mode, colors, toggle)
 
 ### Server (`apps/server/src/`)
 - `main.ts` — bootstrap, CORS, port 3001
@@ -81,3 +160,10 @@ Simple token auth: base64-encoded userId + timestamp. Bearer token in Authorizat
 - Shared package must be built before server (`npm run build` handles order)
 - Mobile uses `10.0.2.2` to reach localhost from Android emulator
 - Server uses in-memory Maps — no DB persistence yet
+- All UI components use ThemeContext for dark/light mode colors
+- Font sizes are smaller than typical due to Press Start 2P pixel font (9-18px range)
+- All borders/strokes are 2px throughout the app
+- Battle tab uses element emojis (🔥💧🌿⚡💠) in the advantage grid
+
+#To run Android emulator
+-Run run-pixelpet.bat at C:\Users\consult_04\Documents\GitHub\PixelPet\run-pixelpet.bat
