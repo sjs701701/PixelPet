@@ -17,6 +17,7 @@ const demoPet: PetInstance = {
   nickname: "Nova",
   level: 1,
   experience: 35,
+  lifeState: "alive",
   careState: {
     hunger: 60,
     mood: 60,
@@ -26,6 +27,8 @@ const demoPet: PetInstance = {
   },
   inventoryLoadout: {},
   cosmeticLoadout: {},
+  lastSimulatedAt: "2026-03-11T00:00:00.000Z",
+  freeRevivesRemaining: 3,
   createdAt: "2026-03-11T00:00:00.000Z",
 };
 

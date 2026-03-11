@@ -30,3 +30,23 @@ export async function performCare(
     token,
   );
 }
+
+export async function revivePet(token: string, petId: string) {
+  return request<PetInstance>(
+    `/pets/${petId}/revive`,
+    {
+      method: "POST",
+    },
+    token,
+  );
+}
+
+export async function acceptPetDeath(token: string, petId: string) {
+  return request<{ accepted: boolean }>(
+    `/pets/${petId}/accept-death`,
+    {
+      method: "POST",
+    },
+    token,
+  );
+}

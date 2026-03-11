@@ -24,6 +24,16 @@ export class PetController {
     return this.petService.getMyPet(userId);
   }
 
+  @Post(":id/revive")
+  revive(@AuthUser() userId: string, @Param("id") petId: string) {
+    return this.petService.revivePet(userId, petId);
+  }
+
+  @Post(":id/accept-death")
+  acceptDeath(@AuthUser() userId: string, @Param("id") petId: string) {
+    return this.petService.acceptDeath(userId, petId);
+  }
+
   @Get(":id")
   getOne(@AuthUser() userId: string, @Param("id") petId: string) {
     return this.petService.assertOwnership(userId, petId);

@@ -4,11 +4,21 @@ import { useFonts } from "expo-font";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import { ElementType, PET_TEMPLATES, getElementAdvantageTier } from "@pixel-pet-arena/shared";
+import {
+  BaseStats,
+  ElementType,
+  PET_TEMPLATES,
+  PetLifeState,
+  PetTraitId,
+  getElementAdvantageTier,
+  getExpRequiredForLevel,
+} from "@pixel-pet-arena/shared";
 import { PetSprite } from "./components/PetSprite";
 import { PixelCard } from "./components/PixelCard";
 import { PixelIcon } from "./components/PixelIcon";
 import { getCopy, getElementLabel } from "./lib/i18n";
+import { formatTimeToDeath, getCriticalReason, getPetLifeCopy } from "./lib/pet-life";
+import { getTraitCopy } from "./lib/pet-traits";
 import {
   getBattleDetails,
   submitBattleAction,
@@ -52,17 +62,36 @@ function AppShell() {
     firstPetPending,
     firstPetErrorMessage,
     carePending,
+    revivePending,
+    acceptDeathPending,
     queuePending,
     queueResult,
     apiSummary,
     handleLogin,
     handleLogout,
+    handleRefreshPet,
     handleGetFirstPet,
     handleCare,
+    handleRevivePet,
+    handleAcceptDeath,
     handleQueue,
     resetQueue,
   } = useAppShellState();
   const t = getCopy(language);
+  const [dismissedDangerKey, setDismissedDangerKey] = useState<string>();
+  const dangerPopupKey = useMemo(() => {
+    if (!pet || (pet.lifeState !== "critical" && pet.lifeState !== "dead")) {
+      return undefined;
+    }
+
+    return `${pet.id}:${pet.lifeState}:${pet.criticalSince ?? ""}:${pet.diedAt ?? ""}`;
+  }, [pet]);
+
+  useEffect(() => {
+    if (!user?.id || !dangerPopupKey) {
+      setDismissedDangerKey(undefined);
+    }
+  }, [dangerPopupKey, user?.id]);
 
   const tabs: { key: TabKey; label: string }[] = [
     { key: "home", label: t.tabs.home },
@@ -89,18 +118,31 @@ function AppShell() {
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {tab === "home" ? (
           <HomeTab
+            petId={pet?.id}
             petTemplateId={homeShowcaseTemplate?.id}
             petTemplateName={homeShowcaseTemplate?.name}
             petNickname={pet?.nickname}
             petTemplateElement={homeShowcaseTemplate?.element}
+            petBaseStats={homeShowcaseTemplate?.baseStats}
+            petTraitId={homeShowcaseTemplate?.traitId}
+            petLifeState={pet?.lifeState}
+            petCriticalSince={pet?.criticalSince}
+            petFreeRevivesRemaining={pet?.freeRevivesRemaining}
             petLevel={pet?.level}
             petExp={pet?.experience}
             careState={pet?.careState}
+            dangerPopupKey={dangerPopupKey}
+            dismissedDangerKey={dismissedDangerKey}
             firstPetPending={firstPetPending}
             firstPetErrorMessage={firstPetErrorMessage}
             carePending={carePending}
+            revivePending={revivePending}
+            acceptDeathPending={acceptDeathPending}
+            onDismissDangerPopup={(key) => setDismissedDangerKey(key)}
             onGetFirstPet={handleGetFirstPet}
             onCare={handleCare}
+            onRevive={handleRevivePet}
+            onAcceptDeath={handleAcceptDeath}
           />
         ) : null}
         {tab === "battle" ? (
@@ -108,8 +150,10 @@ function AppShell() {
             petTemplateName={petTemplate?.name}
             petTemplateElement={petTemplate?.element}
             petTemplateId={petTemplate?.id}
+            petLifeState={pet?.lifeState}
             queuePending={queuePending}
             queueResult={queueResult}
+            onRefreshPet={handleRefreshPet}
             onQueue={handleQueue}
             onResetQueue={resetQueue}
             token={token}
@@ -229,41 +273,90 @@ function LoginScreen({
 /* ───── Home ───── */
 
 function HomeTab({
+  petId,
   petTemplateId,
   petTemplateName,
   petNickname,
   petTemplateElement,
+  petBaseStats,
+  petTraitId,
+  petLifeState,
+  petCriticalSince,
+  petFreeRevivesRemaining,
   petLevel,
   petExp,
   careState,
+  dangerPopupKey,
+  dismissedDangerKey,
   firstPetPending,
   firstPetErrorMessage,
   carePending,
+  revivePending,
+  acceptDeathPending,
+  onDismissDangerPopup,
   onGetFirstPet,
   onCare,
+  onRevive,
+  onAcceptDeath,
 }: {
+  petId?: string;
   petTemplateId?: string;
   petTemplateName?: string;
   petNickname?: string;
   petTemplateElement?: ElementType;
+  petBaseStats?: BaseStats;
+  petTraitId?: PetTraitId;
+  petLifeState?: PetLifeState;
+  petCriticalSince?: string;
+  petFreeRevivesRemaining?: number;
   petLevel?: number;
   petExp?: number;
   careState?: { hunger: number; mood: number; hygiene: number; energy: number; bond: number };
+  dangerPopupKey?: string;
+  dismissedDangerKey?: string;
   firstPetPending: boolean;
   firstPetErrorMessage?: string;
   carePending: boolean;
+  revivePending: boolean;
+  acceptDeathPending: boolean;
+  onDismissDangerPopup: (key: string) => void;
   onGetFirstPet: (nickname?: string) => Promise<unknown>;
   onCare: (action: "feed" | "clean" | "play" | "rest") => void;
+  onRevive: () => Promise<unknown>;
+  onAcceptDeath: () => Promise<unknown>;
 }) {
   const { c } = useTheme();
   const { language } = useSessionStore();
   const t = getCopy(language);
   const hasPet = Boolean(petTemplateName && petTemplateElement && careState);
   const [nicknameOpen, setNicknameOpen] = useState(false);
+  const [traitInfoOpen, setTraitInfoOpen] = useState(false);
+  const [dangerModalOpen, setDangerModalOpen] = useState(false);
+  const [dangerNow, setDangerNow] = useState(() => new Date());
   const [nicknameDraft, setNicknameDraft] = useState("");
   const [nicknameInputKey, setNicknameInputKey] = useState(0);
   const [cooldowns, setCooldowns] = useState<Record<string, number>>({});
   const displayName = petNickname ?? petTemplateName;
+  const hasTraitInfo = Boolean(hasPet && petTemplateName && petTemplateElement && petBaseStats && petTraitId);
+  const dangerState = petLifeState === "critical" || petLifeState === "dead";
+  const requiredExp = getExpRequiredForLevel(petLevel ?? 1);
+  const petLifeCopy = getPetLifeCopy(language, petLifeState ?? "alive");
+  const traitCopy = getTraitCopy(language, petTraitId);
+  const statSectionTitle = language === "ko" ? "기본 전투 스탯" : "base battle stats";
+  const traitSectionTitle = language === "ko" ? "재능" : "trait";
+  const closeLabel = language === "ko" ? "닫기" : "close";
+  const reviveLabel = language === "ko" ? "무료 부활" : "free revive";
+  const restartLabel = language === "ko" ? "새로 시작" : "restart";
+  const pendingLabel = language === "ko" ? "처리 중..." : "working...";
+  const paidReviveLabel = language === "ko" ? "유료 부활 예정" : "paid revive later";
+  const remainingReviveLabel = language === "ko" ? "남은 무료 부활권" : "free revives left";
+  const timeLeftLabel = language === "ko" ? "사망까지" : "time to death";
+  const statCards = [
+    { key: "hp", label: "HP", value: petBaseStats?.hp ?? 0 },
+    { key: "attack", label: "ATK", value: petBaseStats?.attack ?? 0 },
+    { key: "defense", label: "DEF", value: petBaseStats?.defense ?? 0 },
+    { key: "speed", label: "SPD", value: petBaseStats?.speed ?? 0 },
+  ];
 
   const startCooldown = useCallback((key: string) => {
     const id = Date.now();
@@ -290,6 +383,45 @@ function HomeTab({
       return;
     }
   }
+
+  function handleCloseDangerModal() {
+    setDangerModalOpen(false);
+    if (dangerPopupKey) {
+      onDismissDangerPopup(dangerPopupKey);
+    }
+  }
+
+  useEffect(() => {
+    if (!hasTraitInfo) {
+      setTraitInfoOpen(false);
+    }
+  }, [hasTraitInfo]);
+
+  useEffect(() => {
+    if (!dangerState) {
+      setDangerModalOpen(false);
+      return;
+    }
+
+    if (traitInfoOpen || nicknameOpen || !dangerPopupKey || dismissedDangerKey === dangerPopupKey) {
+      return;
+    }
+
+    setDangerNow(new Date());
+    setDangerModalOpen(true);
+  }, [dangerPopupKey, dangerState, dismissedDangerKey, nicknameOpen, traitInfoOpen]);
+
+  useEffect(() => {
+    if (!dangerModalOpen || petLifeState !== "critical") {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setDangerNow(new Date());
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [dangerModalOpen, petLifeState]);
 
   const careActions: { key: "feed" | "clean" | "play" | "rest"; icon: string; label: string }[] = [
     { key: "feed", icon: "feed", label: t.home.feed },
@@ -321,9 +453,21 @@ function HomeTab({
             <Text style={[styles.metaValue, { color: c.text }]}>
               {getElementLabel(language, petTemplateElement)}
             </Text>
-            <Text style={[styles.metaLabel, { color: c.gray }]}>
-              {language === "ko" ? "종족" : "species"}
-            </Text>
+            <View style={styles.metaLabelRow}>
+              <Text style={[styles.metaLabelInline, { color: c.gray }]}>
+                {language === "ko" ? "종족" : "species"}
+              </Text>
+              {hasTraitInfo ? (
+                <Pressable
+                  testID="pet-trait-info-button"
+                  style={[styles.infoButton, { borderColor: c.divider }]}
+                  hitSlop={8}
+                  onPress={() => setTraitInfoOpen(true)}
+                >
+                  <Text style={[styles.infoButtonText, { color: c.text }]}>i</Text>
+                </Pressable>
+              ) : null}
+            </View>
             <Text style={[styles.metaValueBold, { color: c.text }]}>{petTemplateName}</Text>
             {petNickname ? (
               <>
@@ -334,7 +478,7 @@ function HomeTab({
               </>
             ) : null}
             <Text style={[styles.metaValueBold, { color: c.text, marginTop: 14 }]}>Lv. {petLevel ?? 0}</Text>
-            <DotExpBar value={petExp ?? 0} />
+            <DotExpBar value={petExp ?? 0} maxValue={requiredExp} />
           </View>
         </View>
       ) : (
@@ -410,6 +554,140 @@ function HomeTab({
       )}
 
       {/* Section 2 — Status Bars */}
+      <Modal
+        visible={traitInfoOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setTraitInfoOpen(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setTraitInfoOpen(false)}>
+          <Pressable
+            testID="pet-trait-modal"
+            style={[styles.modalBox, { backgroundColor: c.bg, borderColor: c.divider }]}
+            onPress={(event) => event.stopPropagation()}
+          >
+            <Text style={[styles.modalTitle, { color: c.text }]}>{petTemplateName}</Text>
+            {petTemplateElement ? (
+              <Text style={[styles.modalSubtitle, { color: c.gray }]}>
+                {getElementLabel(language, petTemplateElement)}
+              </Text>
+            ) : null}
+
+            <View style={styles.modalInfoBlock}>
+              <Text style={[styles.modalSectionLabel, { color: c.grayDark }]}>{statSectionTitle}</Text>
+              <View style={styles.traitStatsGrid}>
+                {statCards.map((stat) => (
+                  <View key={stat.key} style={[styles.traitStatCard, { borderColor: c.divider }]}>
+                    <Text style={[styles.traitStatLabel, { color: c.gray }]}>{stat.label}</Text>
+                    <Text style={[styles.traitStatValue, { color: c.text }]}>{stat.value}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.modalInfoBlock}>
+              <Text style={[styles.modalSectionLabel, { color: c.grayDark }]}>{traitSectionTitle}</Text>
+              <Text style={[styles.traitName, { color: c.text }]}>{traitCopy.name}</Text>
+              <Text style={[styles.traitSummary, { color: c.gray }]}>{traitCopy.summary}</Text>
+              <Text style={[styles.traitBattleEffect, { color: c.text }]}>{traitCopy.battleEffect}</Text>
+            </View>
+
+            <Pressable
+              testID="pet-trait-modal-close"
+              style={[styles.modalButtonSingle, { borderColor: c.divider }]}
+              onPress={() => setTraitInfoOpen(false)}
+            >
+              <Text style={[styles.modalButtonText, { color: c.text }]}>{closeLabel}</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={dangerModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCloseDangerModal}
+      >
+        <Pressable style={styles.modalOverlay} onPress={handleCloseDangerModal}>
+          <Pressable
+            style={[styles.modalBox, { backgroundColor: c.bg, borderColor: c.divider }]}
+            onPress={(event) => event.stopPropagation()}
+          >
+            <Text style={[styles.modalTitle, { color: c.text }]}>{petLifeCopy.title}</Text>
+            <Text style={[styles.modalSubtitle, { color: c.gray }]}>{petLifeCopy.body}</Text>
+            {petLifeState === "critical" && careState ? (
+              <View style={styles.modalInfoBlock}>
+                <Text style={[styles.modalSectionLabel, { color: c.grayDark }]}>{timeLeftLabel}</Text>
+                <Text style={[styles.traitName, { color: c.text }]}>
+                  {formatTimeToDeath(
+                    language,
+                    {
+                      lifeState: petLifeState,
+                      criticalSince: petCriticalSince,
+                    },
+                    dangerNow,
+                  )}
+                </Text>
+                <Text style={[styles.traitSummary, { color: c.gray }]}>
+                  {getCriticalReason(language, { careState })}
+                </Text>
+              </View>
+            ) : null}
+            {petLifeState === "dead" ? (
+              <View style={styles.modalInfoBlock}>
+                <Text style={[styles.modalSectionLabel, { color: c.grayDark }]}>{remainingReviveLabel}</Text>
+                <Text style={[styles.traitName, { color: c.text }]}>{petFreeRevivesRemaining ?? 0}</Text>
+                {(petFreeRevivesRemaining ?? 0) <= 0 ? (
+                  <Text style={[styles.traitSummary, { color: c.gray }]}>{paidReviveLabel}</Text>
+                ) : null}
+              </View>
+            ) : null}
+            <View style={styles.dangerActions}>
+              {petLifeState === "dead" && (petFreeRevivesRemaining ?? 0) > 0 ? (
+                <Pressable
+                  style={[
+                    styles.modalButton,
+                    { borderColor: c.divider },
+                    (revivePending || acceptDeathPending) && styles.actionButtonDisabled,
+                  ]}
+                  disabled={revivePending || acceptDeathPending}
+                  onPress={() => {
+                    onRevive().then(handleCloseDangerModal).catch(() => undefined);
+                  }}
+                >
+                  <Text style={[styles.modalButtonText, { color: c.text }]}>
+                    {revivePending ? pendingLabel : reviveLabel}
+                  </Text>
+                </Pressable>
+              ) : null}
+              {petLifeState === "dead" ? (
+                <Pressable
+                  style={[
+                    styles.modalButton,
+                    { borderColor: c.divider },
+                    (revivePending || acceptDeathPending) && styles.actionButtonDisabled,
+                  ]}
+                  disabled={revivePending || acceptDeathPending}
+                  onPress={() => {
+                    onAcceptDeath().then(handleCloseDangerModal).catch(() => undefined);
+                  }}
+                >
+                  <Text style={[styles.modalButtonText, { color: c.text }]}>
+                    {acceptDeathPending ? pendingLabel : restartLabel}
+                  </Text>
+                </Pressable>
+              ) : null}
+              {petLifeState !== "dead" ? (
+                <Pressable style={[styles.modalButtonSingle, { borderColor: c.divider }]} onPress={handleCloseDangerModal}>
+                  <Text style={[styles.modalButtonText, { color: c.text }]}>{closeLabel}</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       <View style={[styles.divider, { backgroundColor: c.divider }]} />
       <View style={styles.statusSection}>
         <StatBar label={t.home.hunger} value={careState?.hunger ?? 0} />
@@ -425,7 +703,7 @@ function HomeTab({
         {careActions.map(({ key, icon, label }) => {
           const anyCooldown = Object.values(cooldowns).some(Boolean);
           const onCooldown = Boolean(cooldowns[key]);
-          const disabled = !hasPet || anyCooldown;
+          const disabled = !hasPet || anyCooldown || carePending || petLifeState === "dead";
           return (
             <View key={key} style={styles.actionButtonWrap}>
               <Pressable
@@ -454,11 +732,11 @@ function HomeTab({
 /* ───── DotExpBar ───── */
 
 const EXP_DOTS = 10;
-const EXP_PER_LEVEL = 100;
 
-function DotExpBar({ value }: { value: number }) {
+function DotExpBar({ value, maxValue }: { value: number; maxValue: number }) {
   const { c } = useTheme();
-  const pct = (value % EXP_PER_LEVEL) / EXP_PER_LEVEL;
+  const safeMax = Math.max(1, maxValue);
+  const pct = Math.max(0, Math.min(1, value / safeMax));
   const filled = Math.round(pct * EXP_DOTS);
 
   return (
@@ -599,8 +877,10 @@ function BattleTab({
   petTemplateName,
   petTemplateElement,
   petTemplateId,
+  petLifeState,
   queuePending,
   queueResult,
+  onRefreshPet,
   onQueue,
   onResetQueue,
   token,
@@ -609,8 +889,10 @@ function BattleTab({
   petTemplateName?: string;
   petTemplateElement?: ElementType;
   petTemplateId?: string;
+  petLifeState?: PetLifeState;
   queuePending: boolean;
   queueResult?: { matched: boolean; battleId?: string };
+  onRefreshPet: () => Promise<unknown>;
   onQueue: () => void;
   onResetQueue: () => void;
   token?: string;
@@ -622,6 +904,7 @@ function BattleTab({
   const [battleState, setBattleState] = useState<BattleState | null>(null);
   const [actionPending, setActionPending] = useState(false);
   const enteredBattleRef = useRef<string | null>(null);
+  const battleLocked = petLifeState === "dead";
 
   // Auto-enter battle when matched (only once per battleId)
   useEffect(() => {
@@ -639,6 +922,9 @@ function BattleTab({
     try {
       const result = await submitBattleAction(token, battleState.battleId, action);
       setBattleState(result);
+      if (result.result) {
+        await onRefreshPet();
+      }
     } finally {
       setActionPending(false);
     }
@@ -794,8 +1080,12 @@ function BattleTab({
         <Text style={[styles.battleBody, { color: c.text }]}>{t.battle.currentFighter(fighterLabel)}</Text>
         <Text style={[styles.battleMuted, { color: c.gray }]}>{t.battle.rule}</Text>
         <Pressable
-          style={[styles.enterButton, { borderColor: c.divider }, !petTemplateName && styles.actionButtonDisabled]}
-          disabled={!petTemplateName}
+          style={[
+            styles.enterButton,
+            { borderColor: c.divider },
+            (!petTemplateName || battleLocked) && styles.actionButtonDisabled,
+          ]}
+          disabled={!petTemplateName || battleLocked}
           onPress={onQueue}
         >
           <Text style={[styles.battleBtnText, { color: c.text }]}>
@@ -805,6 +1095,11 @@ function BattleTab({
         {queueResult && !queueResult.matched ? (
           <Text style={[styles.battleBody, { color: c.text }]}>
             {t.battle.waiting}
+          </Text>
+        ) : null}
+        {battleLocked ? (
+          <Text style={[styles.battleMuted, { color: c.accent }]}>
+            {language === "ko" ? "사망 상태에서는 배틀에 들어갈 수 없습니다." : "Dead pets cannot enter battle."}
           </Text>
         ) : null}
       </View>
@@ -1088,9 +1383,18 @@ const styles = StyleSheet.create({
   petImageBorder: { position: "absolute", bottom: 0, left: 0, right: 0, height: 2 },
   petMetaArea: { width: "30%", paddingLeft: 16, justifyContent: "center", gap: 6 },
   metaLabel: { fontSize: 12, fontFamily: FONT, textTransform: "lowercase", marginTop: 10 },
+  metaLabelRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 10 },
+  metaLabelInline: { fontSize: 12, fontFamily: FONT, textTransform: "lowercase" },
   metaValue: { fontSize: 14, fontFamily: FONT },
   metaValueBold: { fontSize: 14, fontFamily: FONT_BOLD },
   metaValueItalic: { fontSize: 12, fontFamily: FONT, fontStyle: "italic", textTransform: "lowercase" },
+  infoButton: { width: 20, height: 20, borderWidth: 2, borderRadius: 999, alignItems: "center", justifyContent: "center" },
+  infoButtonText: { fontSize: 10, fontFamily: FONT_BOLD, lineHeight: 10, textAlign: "center", textTransform: "lowercase" },
+  expMeta: { fontSize: 10, fontFamily: FONT, marginTop: 4 },
+  petStatusRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8, marginTop: 10 },
+  statusChip: { fontSize: 10, fontFamily: FONT_BOLD, borderWidth: 2, paddingHorizontal: 8, paddingVertical: 4 },
+  statusLink: { borderWidth: 2, paddingHorizontal: 8, paddingVertical: 4 },
+  statusLinkText: { fontSize: 10, fontFamily: FONT, textTransform: "lowercase" },
 
   dotExpRow: { flexDirection: "row", gap: 2, marginTop: 2 },
   dotExpCell: { width: 5, height: 5 },
@@ -1102,10 +1406,22 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.7)", padding: 24 },
   modalBox: { width: "100%", borderWidth: 2, padding: 24, gap: 16 },
   modalTitle: { fontSize: 13, fontFamily: FONT_BOLD, letterSpacing: 1, textAlign: "center" },
+  modalSubtitle: { fontSize: 11, fontFamily: FONT, textAlign: "center", lineHeight: 18 },
+  modalInfoBlock: { gap: 10 },
+  modalSectionLabel: { fontSize: 10, fontFamily: FONT_BOLD, letterSpacing: 2, textTransform: "lowercase" },
   nicknameInput: { borderBottomWidth: 2, fontSize: 12, fontFamily: FONT, paddingVertical: 8 },
   nicknameActions: { flexDirection: "row", gap: 16, justifyContent: "center" },
   modalButton: { flex: 1, borderWidth: 2, paddingVertical: 14, alignItems: "center" },
+  modalButtonSingle: { borderWidth: 2, paddingVertical: 14, alignItems: "center" },
   modalButtonText: { fontSize: 11, fontFamily: FONT, letterSpacing: 1 },
+  traitStatsGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: 12 },
+  traitStatCard: { width: "47%", borderWidth: 2, paddingVertical: 10, paddingHorizontal: 12, gap: 6 },
+  traitStatLabel: { fontSize: 10, fontFamily: FONT, letterSpacing: 1 },
+  traitStatValue: { fontSize: 16, fontFamily: FONT_BOLD },
+  traitName: { fontSize: 14, fontFamily: FONT_BOLD },
+  traitSummary: { fontSize: 10, fontFamily: FONT, lineHeight: 18 },
+  traitBattleEffect: { fontSize: 10, fontFamily: FONT_BOLD, lineHeight: 18 },
+  dangerActions: { flexDirection: "row", gap: 12 },
   actionTextGray: { fontSize: 10, fontFamily: FONT, textTransform: "lowercase" },
   actionTextWhite: { fontSize: 10, fontFamily: FONT, textTransform: "lowercase" },
 

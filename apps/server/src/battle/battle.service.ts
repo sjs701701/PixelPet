@@ -13,6 +13,7 @@ import {
   resolveTurn,
 } from "@pixel-pet-arena/shared";
 import { StoreService } from "../common/store.service";
+import { PetService } from "../pet/pet.service";
 
 type LiveBattle = {
   id: string;
@@ -30,9 +31,12 @@ export class BattleService {
   constructor(
     @Inject(StoreService)
     private readonly store: StoreService,
+    @Inject(PetService)
+    private readonly pets: PetService,
   ) {}
 
   queueForBattle(userId: string, petId: string) {
+    this.pets.assertActionable(userId, petId);
     this.store.enqueueBattle(userId, petId);
     const pair = this.store.popMatchFor(userId);
     if (!pair) {
@@ -147,6 +151,8 @@ export class BattleService {
 
     if (winner) {
       const loser = winner === left.userId ? right.userId : left.userId;
+      this.applyBattleOutcome(left, winner);
+      this.applyBattleOutcome(right, winner);
       const replay: ReplayRecord = {
         battleId: battle.id,
         createdAt: new Date().toISOString(),
@@ -162,7 +168,7 @@ export class BattleService {
 
   /** Dev-only: instantly match against a random bot */
   queueForBattleDev(userId: string, petId: string) {
-    const pet = this.store.getPetOrThrow(petId);
+    const pet = this.pets.assertActionable(userId, petId);
     const template = PET_TEMPLATES.find((t) => t.id === pet.templateId);
     if (!template) throw new Error("Template missing");
 
@@ -182,6 +188,7 @@ export class BattleService {
       defense: botTemplate.baseStats.defense,
       speed: botTemplate.baseStats.speed,
       guarding: false,
+      traitId: botTemplate.traitId,
       premiumStatus: "free",
     });
 
@@ -216,7 +223,7 @@ export class BattleService {
   }
 
   private buildFighter(userId: string, petId: string) {
-    const pet = this.store.getPetOrThrow(petId);
+    const pet = this.pets.assertActionable(userId, petId);
     const user = this.store.getUser(userId);
     const template = PET_TEMPLATES.find((entry) => entry.id === pet.templateId);
     if (!template) {
@@ -235,6 +242,7 @@ export class BattleService {
       defense: template.baseStats.defense,
       speed: template.baseStats.speed,
       guarding: false,
+      traitId: template.traitId,
       premiumStatus: user.premiumStatus,
     });
   }
@@ -260,5 +268,17 @@ export class BattleService {
           }
         : undefined,
     };
+  }
+
+  private applyBattleOutcome(fighter: BattleFighterSnapshot, winnerUserId: string) {
+    if (fighter.userId === "bot-trainer" || !this.store.getPet(fighter.petId)) {
+      return;
+    }
+
+    this.pets.applyBattleOutcome(
+      fighter.userId,
+      fighter.petId,
+      fighter.userId === winnerUserId ? "win" : "lose",
+    );
   }
 }

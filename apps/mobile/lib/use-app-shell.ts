@@ -3,12 +3,14 @@ import { useMutation } from "@tanstack/react-query";
 import { PET_TEMPLATES } from "@pixel-pet-arena/shared";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  acceptPetDeath,
   ApiError,
   getApiEndpointSummary,
   getFriendlyApiErrorMessage,
   getMyPet,
   performCare,
   queueBattleDev,
+  revivePet,
   rollInitialPet,
   signInDemo,
 } from "./api";
@@ -163,6 +165,24 @@ export function useAppShellState() {
     },
   });
 
+  const reviveMutation = useMutation({
+    mutationFn: async () => {
+      if (!token || !pet) throw new Error("No active pet");
+      const revivedPet = await revivePet(token, pet.id);
+      setPet(revivedPet);
+      return revivedPet;
+    },
+  });
+
+  const acceptDeathMutation = useMutation({
+    mutationFn: async () => {
+      if (!token || !pet) throw new Error("No active pet");
+      await acceptPetDeath(token, pet.id);
+      setPet(undefined);
+      return null;
+    },
+  });
+
   const queueMutation = useMutation({
     mutationFn: async () => {
       if (!token || !pet) throw new Error("No active pet");
@@ -170,24 +190,45 @@ export function useAppShellState() {
     },
   });
 
+  const handleRefreshPet = useCallback(async () => {
+    if (!token) {
+      setPet(undefined);
+      return null;
+    }
+
+    const refreshedPet = await getMyPet(token);
+    setPet(refreshedPet ?? undefined);
+    return refreshedPet;
+  }, [setPet, token]);
+
   const handleLogout = useCallback(() => {
     setAuthError(null);
     loginMutation.reset();
     firstPetMutation.reset();
     careMutation.reset();
+    reviveMutation.reset();
+    acceptDeathMutation.reset();
     queueMutation.reset();
     clearStoredSession().catch(() => undefined);
     clearSession();
     setTab("home");
     setStartupPhase("login");
-  }, [careMutation, clearSession, firstPetMutation, loginMutation, queueMutation]);
+  }, [
+    acceptDeathMutation,
+    careMutation,
+    clearSession,
+    firstPetMutation,
+    loginMutation,
+    queueMutation,
+    reviveMutation,
+  ]);
 
   const petTemplate = useMemo(
     () => PET_TEMPLATES.find((template) => template.id === pet?.templateId),
     [pet],
   );
   const homeShowcaseTemplate = useMemo(
-    () => PET_TEMPLATES.find((template) => template.id === "fire-1") ?? petTemplate,
+    () => petTemplate ?? PET_TEMPLATES.find((template) => template.id === "fire-1"),
     [petTemplate],
   );
   const collectionPreview = useMemo(() => PET_TEMPLATES.slice(0, 8), []);
@@ -221,13 +262,18 @@ export function useAppShellState() {
       ? getFriendlyApiErrorMessage(firstPetMutation.error, language)
       : undefined,
     carePending: careMutation.isPending,
+    revivePending: reviveMutation.isPending,
+    acceptDeathPending: acceptDeathMutation.isPending,
     queuePending: queueMutation.isPending,
     queueResult: queueMutation.data,
     apiSummary: getApiEndpointSummary(language),
     handleLogin: () => loginMutation.mutate(),
     handleLogout,
+    handleRefreshPet,
     handleGetFirstPet: (nickname?: string) => firstPetMutation.mutateAsync(nickname),
     handleCare: (action: "feed" | "clean" | "play" | "rest") => careMutation.mutate(action),
+    handleRevivePet: () => reviveMutation.mutateAsync(),
+    handleAcceptDeath: () => acceptDeathMutation.mutateAsync(),
     handleQueue: () => queueMutation.mutate(),
     resetQueue: () => queueMutation.reset(),
   };

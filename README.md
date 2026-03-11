@@ -2,7 +2,7 @@
 
 Pixel Pet Arena is a retro-styled mobile tamagotchi prototype built with Expo, React Native, and NestJS.
 
-The current build focuses on a strong pixel-art presentation: a dark arcade UI, animated pet sprite, care actions, collection preview, and a basic battle queue flow backed by a local API server.
+The current build focuses on a stronger pet loop: a dark arcade UI, animated pet sprite, care actions, trait-based identity, local persistence, progression and death states, and a dev battle flow backed by a local API server.
 
 ![Pixel Pet Arena screenshot](./screenshots/1.jpg)
 
@@ -11,6 +11,9 @@ The current build focuses on a strong pixel-art presentation: a dark arcade UI, 
 - Raise a pixel pet with a simple care loop
 - Start with 1 random pet template
 - Manage `Feed`, `Clean`, `Play`, and `Rest` actions
+- Inspect species base stats and trait info from the home screen
+- Grow pets through time-based care maintenance and battle rewards
+- Revive dead pets with limited free tickets or restart from a new pet
 - Browse a small collection preview of available templates
 - Queue for battle from the mobile app
 - Switch language and theme inside the app
@@ -22,8 +25,8 @@ The current mobile prototype includes these screens and flows:
 
 1. Splash screen with retro boot-style presentation
 2. Demo login flow
-3. Home tab with featured pet, level/EXP, and care actions
-4. Battle tab with queue request
+3. Home tab with featured pet, EXP bar, care actions, trait info modal, and critical/dead popup flow
+4. Battle tab with dev queue request and post-battle pet refresh
 5. Collection tab with template preview
 6. Profile tab with trainer info and settings
 
@@ -177,8 +180,11 @@ npm test
 
 - Elements currently used: `fire`, `water`, `grass`, `electric`, `digital`
 - First pet acquisition is random
-- Care actions affect the pet state
-- Battle queue flow is connected to the local server
+- Every pet now gets a deterministic trait from its stat bias, and that trait lightly affects battle
+- Care actions affect the pet state and can move the pet between `good`, `alive`, `critical`, and `dead`
+- Passive growth only happens while the pet is in `good` state
+- Battle queue flow is connected to the local server and battle outcomes now change XP plus care stats
+- Dead pets cannot enter care or battle until they are revived or accepted as lost
 - Shared rules live in `packages/shared` so client and server stay aligned
 
 ## Current Scope
@@ -187,7 +193,9 @@ This repository is still a prototype. The current version is strongest in:
 
 - demo login flow tied to a local install id
 - local persistence for user, session, and pet state
-- pet creation, nickname save, and care loop prototype
+- pet creation, nickname save, trait system, and care loop prototype
+- shared progression rules for passive XP, level bands, and life-state simulation
+- revive / death handling with free tickets and restart flow
 - internal-only premium dev toggle
 - shared gameplay rule setup and mobile app shell
 
@@ -196,12 +204,36 @@ Areas still suited for future iteration:
 - final battle policy and battle server rules
 - real auth provider integration
 - production database and deployment setup
-- expanded pet content and progression
+- expanded pet content, balancing, and progression tuning
 - store billing and real receipt verification
 
 ---
 
 ## Changelog
+
+### v0.4.0 - 2026-03-11
+
+**Pet Identity**
+- Added shared pet trait system with deterministic trait assignment from template stat bias
+- Added home-screen species info modal with base battle stats and trait details
+- Trait effects now influence initiative or damage without changing the basic battle actions
+
+**Progression / Death Loop**
+- Added shared pet life states: `good`, `alive`, `critical`, `dead`
+- Added time-based pet simulation on server reads/actions instead of a background worker
+- Passive XP now only grows while the pet is in `good` state
+- Added banded level requirements up to level 20 while keeping a fixed-length EXP bar on mobile
+- Added critical-to-dead transition, free revive tickets, and death acceptance flow
+
+**Battle Integration**
+- Battle completion now updates the real pet with win/loss XP and care-stat aftermath
+- Dead pets are blocked from care and battle actions
+- Mobile refreshes the active pet after battle completion so growth and aftermath appear immediately
+
+**Home UX**
+- Added automatic critical/dead warning popup when re-entering home
+- Home keeps the EXP bar visible but hides raw EXP text and state text from the main pet card
+- Critical/dead actions are handled through modal UI instead of a persistent home banner
 
 ### v0.3.0 — 2026-03-11
 

@@ -1,3 +1,4 @@
+import { getTraitIdForStatBias } from "../traits";
 import { BaseStats, ElementType, PetTemplate } from "../types";
 
 type MotifSeed = {
@@ -109,6 +110,7 @@ function buildTemplate(
     element,
     motif: seed.motif,
     rarity: seed.rarity,
+    traitId: getTraitIdForStatBias(seed.statBias),
     baseStats: stats,
     spriteSet: {
       idle: `/sprites/${element}/${seed.name.toLowerCase()}-idle.png`,

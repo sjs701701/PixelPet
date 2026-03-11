@@ -10,7 +10,7 @@ type SessionState = {
   provider: LoginProvider;
   language: AppLanguage;
   setSession: (user: User, token: string) => void;
-  setPet: (pet: PetInstance) => void;
+  setPet: (pet?: PetInstance) => void;
   setLanguage: (language: AppLanguage) => void;
   clearSession: () => void;
 };

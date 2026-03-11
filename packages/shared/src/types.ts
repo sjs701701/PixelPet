@@ -8,6 +8,16 @@ export type PremiumStatus = "free" | "premium";
 
 export type BattleAction = "attack" | "guard" | "skill";
 
+export type PetLifeState = "good" | "alive" | "critical" | "dead";
+
+export type PetTraitId =
+  | "assault"
+  | "guardian"
+  | "quickstep"
+  | "sturdy"
+  | "finisher"
+  | "focus";
+
 export interface ElementAdvantage {
   attackerElement: ElementType;
   defenderElement: ElementType;
@@ -19,6 +29,13 @@ export interface BaseStats {
   attack: number;
   defense: number;
   speed: number;
+}
+
+export interface PetTrait {
+  id: PetTraitId;
+  name: string;
+  summary: string;
+  battleEffect: string;
 }
 
 export interface CareState {
@@ -46,6 +63,7 @@ export interface PetTemplate {
   element: ElementType;
   motif: string;
   rarity: "common" | "rare" | "epic";
+  traitId: PetTraitId;
   baseStats: BaseStats;
   spriteSet: {
     idle: string;
@@ -62,9 +80,14 @@ export interface PetInstance {
   nickname?: string;
   level: number;
   experience: number;
+  lifeState: PetLifeState;
   careState: CareState;
   inventoryLoadout: InventoryLoadout;
   cosmeticLoadout: CosmeticLoadout;
+  lastSimulatedAt: string;
+  criticalSince?: string;
+  diedAt?: string;
+  freeRevivesRemaining: number;
   createdAt: string;
 }
 
@@ -99,6 +122,7 @@ export interface BattleFighterSnapshot {
   defense: number;
   speed: number;
   guarding: boolean;
+  traitId: PetTraitId;
   premiumStatus: PremiumStatus;
 }
 

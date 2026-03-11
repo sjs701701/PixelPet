@@ -6,6 +6,7 @@ import {
   Item,
 } from "./types";
 import { ELEMENT_MULTIPLIERS, getElementAdvantageTier } from "./elements";
+import { getTraitDamageMultiplier, getTraitInitiativeBonus } from "./traits";
 
 function getItemBoost(item: Item | undefined) {
   return {
@@ -57,10 +58,11 @@ export function resolveTurn(
   const advantageBonus = ELEMENT_MULTIPLIERS[advantageTier];
   const skillBonus = action === "skill" ? 1.15 : 1;
   const guardPenalty = defender.guarding ? 0.7 : 1;
+  const traitMultiplier = getTraitDamageMultiplier(actor, defender, action);
   const baseDamage = Math.max(5, actor.attack * skillBonus - defender.defense * 0.45);
   const damage = Math.max(
     1,
-    Math.round(baseDamage * advantageBonus * randomFactor * guardPenalty),
+    Math.round(baseDamage * advantageBonus * randomFactor * guardPenalty * traitMultiplier),
   );
   const nextHp = Math.max(0, defender.hp - damage);
 
@@ -87,11 +89,14 @@ export function compareInitiative(
   left: BattleFighterSnapshot,
   right: BattleFighterSnapshot,
 ): number {
-  if (left.speed === right.speed) {
+  const leftSpeed = left.speed + getTraitInitiativeBonus(left);
+  const rightSpeed = right.speed + getTraitInitiativeBonus(right);
+
+  if (leftSpeed === rightSpeed) {
     return left.userId.localeCompare(right.userId);
   }
 
-  return right.speed - left.speed;
+  return rightSpeed - leftSpeed;
 }
 
 export function invertAdvantage(tier: AdvantageTier): AdvantageTier {

@@ -1,5 +1,6 @@
 import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 import {
+  DEFAULT_FREE_REVIVES,
   DEFAULT_CARE_STATE,
   PET_TEMPLATES,
   PetInstance,
@@ -71,6 +72,7 @@ export class StoreService {
 
     const safeNickname = nickname?.trim() || undefined;
     const template = PET_TEMPLATES[Math.floor(Math.random() * PET_TEMPLATES.length)];
+    const createdAt = new Date().toISOString();
     const pet: PetInstance = {
       id: `pet-${this.pets.size + 1}`,
       ownerId: userId,
@@ -78,10 +80,13 @@ export class StoreService {
       nickname: safeNickname,
       level: 1,
       experience: 35,
+      lifeState: "alive",
       careState: { ...DEFAULT_CARE_STATE },
       inventoryLoadout: {},
       cosmeticLoadout: {},
-      createdAt: new Date().toISOString(),
+      lastSimulatedAt: createdAt,
+      freeRevivesRemaining: DEFAULT_FREE_REVIVES,
+      createdAt,
     };
     this.pets.set(pet.id, pet);
     this.persistence.savePets(this.pets.values());
@@ -100,6 +105,15 @@ export class StoreService {
       throw new NotFoundException("Pet not found");
     }
     return pet;
+  }
+
+  getPet(petId: string) {
+    return this.pets.get(petId);
+  }
+
+  deletePet(petId: string) {
+    this.pets.delete(petId);
+    this.persistence.savePets(this.pets.values());
   }
 
   enqueueBattle(userId: string, petId: string) {
