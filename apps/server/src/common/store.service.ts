@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 import {
   DEFAULT_CARE_STATE,
   PET_TEMPLATES,
@@ -7,6 +7,7 @@ import {
   ReplayRecord,
   User,
 } from "@pixel-pet-arena/shared";
+import { LocalPersistenceService } from "./local-persistence.service";
 
 type BattleQueueEntry = {
   userId: string;
@@ -21,9 +22,29 @@ export class StoreService {
   private readonly replays: ReplayRecord[] = [];
   private readonly battleQueue: BattleQueueEntry[] = [];
 
+  constructor(
+    @Inject(LocalPersistenceService)
+    private readonly persistence: LocalPersistenceService,
+  ) {
+    for (const user of this.persistence.getUsers()) {
+      this.users.set(user.id, user);
+    }
+
+    for (const pet of this.persistence.getPets()) {
+      this.pets.set(pet.id, pet);
+    }
+
+    this.replays.push(...this.persistence.getReplays());
+  }
+
   upsertUser(user: User) {
     this.users.set(user.id, user);
+    this.persistence.saveUsers(this.users.values());
     return user;
+  }
+
+  findUserByInstallId(installId: string) {
+    return Array.from(this.users.values()).find((user) => user.installId === installId);
   }
 
   getUser(userId: string) {
@@ -42,17 +63,19 @@ export class StoreService {
     return Array.from(this.pets.values()).find((pet) => pet.ownerId === userId);
   }
 
-  rollInitialPet(userId: string) {
+  rollInitialPet(userId: string, nickname?: string) {
     const existing = this.getUserPet(userId);
     if (existing) {
       return existing;
     }
 
+    const safeNickname = nickname?.trim() || undefined;
     const template = PET_TEMPLATES[Math.floor(Math.random() * PET_TEMPLATES.length)];
     const pet: PetInstance = {
       id: `pet-${this.pets.size + 1}`,
       ownerId: userId,
       templateId: template.id,
+      nickname: safeNickname,
       level: 1,
       experience: 35,
       careState: { ...DEFAULT_CARE_STATE },
@@ -61,11 +84,13 @@ export class StoreService {
       createdAt: new Date().toISOString(),
     };
     this.pets.set(pet.id, pet);
+    this.persistence.savePets(this.pets.values());
     return pet;
   }
 
   updatePet(pet: PetInstance) {
     this.pets.set(pet.id, pet);
+    this.persistence.savePets(this.pets.values());
     return pet;
   }
 
@@ -109,6 +134,7 @@ export class StoreService {
 
   addReplay(replay: ReplayRecord) {
     this.replays.unshift(replay);
+    this.persistence.saveReplays(this.replays);
     return replay;
   }
 

@@ -6,10 +6,10 @@
   "scripts": {
     "dev": "expo start",
     "android": "expo run:android",
-    "ios": "expo run:ios"
+    "ios": "expo run:ios",
+    "test": "vitest run lib/session-storage.test.ts lib/store.test.ts"
   },
   "dependencies": {
-    "@expo-google-fonts/press-start-2p": "^0.4.1",
     "@expo/vector-icons": "^14.1.0",
     "@pixel-pet-arena/shared": "0.1.0",
     "@react-native-async-storage/async-storage": "^2.1.2",

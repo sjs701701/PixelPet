@@ -4,6 +4,7 @@ import {
   BattleFighterSnapshot,
   BattleSnapshot,
   BattleTurnLog,
+  ElementType,
   PET_TEMPLATES,
   ReplayRecord,
   createBattleStats,
@@ -45,6 +46,49 @@ export class BattleService {
 
   getBattle(battleId: string) {
     return this.battles.get(battleId);
+  }
+
+  getBattleDetails(battleId: string) {
+    const battle = this.battles.get(battleId);
+    if (!battle) throw new Error("Battle not found");
+    const [left, right] = battle.fighters;
+    return {
+      ...this.toSnapshot(battle),
+      fighters: [
+        { userId: left.userId, name: left.name, element: left.element, level: left.level, hp: left.hp, maxHp: left.maxHp, attack: left.attack, defense: left.defense, speed: left.speed },
+        { userId: right.userId, name: right.name, element: right.element, level: right.level, hp: right.hp, maxHp: right.maxHp, attack: right.attack, defense: right.defense, speed: right.speed },
+      ],
+      logs: battle.logs,
+    };
+  }
+
+  /** Submit player action then auto-submit bot action for dev testing */
+  submitActionDev(battleId: string, userId: string, action: BattleAction): any {
+    const battle = this.battles.get(battleId);
+    if (!battle) throw new Error("Battle not found");
+
+    // Pre-set bot action so both are ready when submitAction processes
+    const botFighter = battle.fighters.find((f) => f.userId === "bot-trainer");
+    if (botFighter && !battle.pendingActions.has(botFighter.userId)) {
+      const roll = Math.random();
+      const botAction: BattleAction = roll < 0.6 ? "attack" : roll < 0.85 ? "skill" : "guard";
+      battle.pendingActions.set(botFighter.userId, botAction);
+    }
+
+    // submitAction will set the player's action and resolve the turn
+    const snapshot = this.submitAction(battleId, userId, action);
+
+    const updated = this.battles.get(battleId);
+    if (!updated) return snapshot;
+    const [left, right] = updated.fighters;
+    return {
+      ...snapshot,
+      fighters: [
+        { userId: left.userId, name: left.name, element: left.element, level: left.level, hp: left.hp, maxHp: left.maxHp, attack: left.attack, defense: left.defense, speed: left.speed },
+        { userId: right.userId, name: right.name, element: right.element, level: right.level, hp: right.hp, maxHp: right.maxHp, attack: right.attack, defense: right.defense, speed: right.speed },
+      ],
+      logs: updated.logs.slice(-2),
+    };
   }
 
   submitAction(battleId: string, userId: string, action: BattleAction): BattleSnapshot {
@@ -114,6 +158,46 @@ export class BattleService {
     }
 
     return this.toSnapshot(battle, winner);
+  }
+
+  /** Dev-only: instantly match against a random bot */
+  queueForBattleDev(userId: string, petId: string) {
+    const pet = this.store.getPetOrThrow(petId);
+    const template = PET_TEMPLATES.find((t) => t.id === pet.templateId);
+    if (!template) throw new Error("Template missing");
+
+    // Pick a random template for the bot (different element if possible)
+    const otherTemplates = PET_TEMPLATES.filter((t) => t.element !== template.element);
+    const botTemplate = otherTemplates[Math.floor(Math.random() * otherTemplates.length)];
+
+    const botFighter = createBattleStats({
+      userId: "bot-trainer",
+      petId: "bot-pet",
+      name: botTemplate.name,
+      element: botTemplate.element as ElementType,
+      level: pet.level,
+      hp: botTemplate.baseStats.hp,
+      maxHp: botTemplate.baseStats.hp,
+      attack: botTemplate.baseStats.attack,
+      defense: botTemplate.baseStats.defense,
+      speed: botTemplate.baseStats.speed,
+      guarding: false,
+      premiumStatus: "free",
+    });
+
+    const playerFighter = this.buildFighter(userId, petId);
+
+    const battle: LiveBattle = {
+      id: `battle-${this.battles.size + 1}`,
+      fighters: [playerFighter, botFighter],
+      turn: 1,
+      logs: [],
+      pendingActions: new Map(),
+      timer: 20,
+    };
+    this.battles.set(battle.id, battle);
+
+    return { matched: true, battleId: battle.id, battle: this.toSnapshot(battle) };
   }
 
   private createBattle(userOneId: string, petOneId: string, userTwoId: string, petTwoId: string) {

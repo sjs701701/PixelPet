@@ -25,7 +25,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 10,
-    fontFamily: "PressStart2P_400Regular",
+    fontFamily: "Mona12",
     letterSpacing: 1,
     textTransform: "lowercase",
   },

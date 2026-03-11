@@ -1,4 +1,4 @@
-import { Controller, Get, Inject, Param, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Param, Post, UseGuards } from "@nestjs/common";
 import { AuthUser } from "../common/auth-user.decorator";
 import { AuthGuard } from "../common/auth.guard";
 import { PetService } from "./pet.service";
@@ -12,8 +12,11 @@ export class PetController {
   ) {}
 
   @Post("roll-initial")
-  rollInitial(@AuthUser() userId: string) {
-    return this.petService.rollInitialPet(userId);
+  rollInitial(
+    @AuthUser() userId: string,
+    @Body() body?: { nickname?: string },
+  ) {
+    return this.petService.rollInitialPet(userId, body?.nickname);
   }
 
   @Get("me")

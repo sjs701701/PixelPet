@@ -9,6 +9,13 @@ export class AuthController {
     private readonly authService: AuthService,
   ) {}
 
+  @Post("demo")
+  signInDemo(
+    @Body() body?: { displayName?: string; installId?: string },
+  ) {
+    return this.authService.signInDemo(body?.displayName, body?.installId);
+  }
+
   @Post("social")
   signIn(
     @Body() body?: { displayName?: string; provider?: LoginProvider },

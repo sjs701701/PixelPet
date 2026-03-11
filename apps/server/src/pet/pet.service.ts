@@ -8,12 +8,12 @@ export class PetService {
     private readonly store: StoreService,
   ) {}
 
-  rollInitialPet(userId: string) {
-    return this.store.rollInitialPet(userId);
+  rollInitialPet(userId: string, nickname?: string) {
+    return this.store.rollInitialPet(userId, nickname);
   }
 
   getMyPet(userId: string) {
-    return this.store.getUserPet(userId) ?? this.store.rollInitialPet(userId);
+    return this.store.getUserPet(userId) ?? null;
   }
 
   assertOwnership(userId: string, petId: string) {

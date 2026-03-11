@@ -1,101 +1,68 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { QueryClient, QueryClientProvider, useMutation } from "@tanstack/react-query";
-import { useFonts, PressStart2P_400Regular } from "@expo-google-fonts/press-start-2p";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useFonts } from "expo-font";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Animated, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { ElementType, PET_TEMPLATES, getElementAdvantageTier } from "@pixel-pet-arena/shared";
 import { PetSprite } from "./components/PetSprite";
 import { PixelCard } from "./components/PixelCard";
 import { PixelIcon } from "./components/PixelIcon";
 import { getCopy, getElementLabel } from "./lib/i18n";
-import { performCare, queueBattle, rollInitialPet, signIn } from "./lib/api";
+import {
+  getBattleDetails,
+  submitBattleAction,
+} from "./lib/api";
 import { AppLanguage, useSessionStore } from "./lib/store";
+import {
+  LoginStatus,
+  ProfileSaveState,
+  ProfileSessionState,
+  TabKey,
+  useAppShellState,
+} from "./lib/use-app-shell";
 import { ThemeContext, useTheme } from "./theme/ThemeContext";
 import { ThemeColors, ThemeMode, getTheme } from "./theme/colors";
 
 const queryClient = new QueryClient();
-const LANGUAGE_KEY = "pixelpet.language";
 const THEME_KEY = "pixelpet.theme";
 const STAT_THRESHOLD = 30;
-const FONT = "PressStart2P_400Regular";
+const FONT = "Mona12";
+const FONT_BOLD = "Mona12-Bold";
 const COOLDOWN_MS = 10000;
-
-type StartupPhase = "splash" | "login" | "app";
-type TabKey = "home" | "battle" | "collection" | "profile";
 
 function AppShell() {
   const { c, mode } = useTheme();
-  const [tab, setTab] = useState<TabKey>("home");
-  const [startupPhase, setStartupPhase] = useState<StartupPhase>("splash");
-  const { user, token, pet, petNickname, language, setSession, setPet, setPetNickname, setLanguage } =
-    useSessionStore();
+  const {
+    tab,
+    setTab,
+    startupPhase,
+    user,
+    token,
+    pet,
+    language,
+    setLanguage,
+    petTemplate,
+    homeShowcaseTemplate,
+    collectionPreview,
+    loginStatus,
+    profileSessionState,
+    profileSaveState,
+    authErrorMessage,
+    firstPetPending,
+    firstPetErrorMessage,
+    carePending,
+    queuePending,
+    queueResult,
+    apiSummary,
+    handleLogin,
+    handleLogout,
+    handleGetFirstPet,
+    handleCare,
+    handleQueue,
+    resetQueue,
+  } = useAppShellState();
   const t = getCopy(language);
-
-  useEffect(() => {
-    async function loadLanguage() {
-      const saved = await AsyncStorage.getItem(LANGUAGE_KEY);
-      if (saved === "ko" || saved === "en") setLanguage(saved);
-    }
-    loadLanguage().catch(() => undefined);
-  }, [setLanguage]);
-
-  useEffect(() => {
-    AsyncStorage.setItem(LANGUAGE_KEY, language).catch(() => undefined);
-  }, [language]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setStartupPhase(user ? "app" : "login"), 1400);
-    return () => clearTimeout(timer);
-  }, [user]);
-
-  const loginMutation = useMutation({
-    mutationFn: async () => {
-      const session = await signIn("Pixel Trainer", "google");
-      setSession(session.user, session.accessToken);
-      return session;
-    },
-    onSuccess: () => {
-      setStartupPhase("app");
-      setTab("home");
-    },
-  });
-
-  const firstPetMutation = useMutation({
-    mutationFn: async (nickname?: string) => {
-      if (!token) throw new Error("No session");
-      const firstPet = await rollInitialPet(token);
-      setPet(firstPet);
-      setPetNickname(nickname?.trim() ? nickname.trim() : undefined);
-      return firstPet;
-    },
-  });
-
-  const careMutation = useMutation({
-    mutationFn: async (action: "feed" | "clean" | "play" | "rest") => {
-      if (!token || !pet) throw new Error("No active pet");
-      const nextPet = await performCare(token, pet.id, action);
-      setPet(nextPet);
-      return nextPet;
-    },
-  });
-
-  const queueMutation = useMutation({
-    mutationFn: async () => {
-      if (!token || !pet) throw new Error("No active pet");
-      return queueBattle(token, pet.id);
-    },
-  });
-
-  const petTemplate = useMemo(
-    () => PET_TEMPLATES.find((template) => template.id === pet?.templateId),
-    [pet],
-  );
-  const homeShowcaseTemplate = useMemo(
-    () => PET_TEMPLATES.find((template) => template.id === "fire-1") ?? petTemplate,
-    [petTemplate],
-  );
-  const collectionPreview = useMemo(() => PET_TEMPLATES.slice(0, 8), []);
 
   const tabs: { key: TabKey; label: string }[] = [
     { key: "home", label: t.tabs.home },
@@ -105,12 +72,13 @@ function AppShell() {
   ];
 
   if (startupPhase === "splash") return <SplashScreen />;
+  if (startupPhase === "restore") return <RestoreScreen />;
   if (startupPhase === "login") {
     return (
       <LoginScreen
-        loading={loginMutation.isPending}
-        hasError={loginMutation.isError}
-        onLogin={() => loginMutation.mutate()}
+        status={loginStatus}
+        errorMessage={authErrorMessage}
+        onLogin={handleLogin}
       />
     );
   }
@@ -123,25 +91,29 @@ function AppShell() {
           <HomeTab
             petTemplateId={homeShowcaseTemplate?.id}
             petTemplateName={homeShowcaseTemplate?.name}
-            petNickname={petNickname}
+            petNickname={pet?.nickname}
             petTemplateElement={homeShowcaseTemplate?.element}
             petLevel={pet?.level}
             petExp={pet?.experience}
             careState={pet?.careState}
-            firstPetPending={firstPetMutation.isPending}
-            firstPetError={firstPetMutation.isError}
-            carePending={careMutation.isPending}
-            onGetFirstPet={(nickname) => firstPetMutation.mutate(nickname)}
-            onCare={(action) => careMutation.mutate(action)}
+            firstPetPending={firstPetPending}
+            firstPetErrorMessage={firstPetErrorMessage}
+            carePending={carePending}
+            onGetFirstPet={handleGetFirstPet}
+            onCare={handleCare}
           />
         ) : null}
         {tab === "battle" ? (
           <BattleTab
             petTemplateName={petTemplate?.name}
             petTemplateElement={petTemplate?.element}
-            queuePending={queueMutation.isPending}
-            queueResult={queueMutation.data}
-            onQueue={() => queueMutation.mutate()}
+            petTemplateId={petTemplate?.id}
+            queuePending={queuePending}
+            queueResult={queueResult}
+            onQueue={handleQueue}
+            onResetQueue={resetQueue}
+            token={token}
+            userId={user?.id}
           />
         ) : null}
         {tab === "collection" ? (
@@ -153,9 +125,13 @@ function AppShell() {
         {tab === "profile" ? (
           <ProfileTab
             onLanguageChange={setLanguage}
+            onLogout={handleLogout}
+            apiSummary={apiSummary}
             userName={user?.displayName}
             provider={user?.loginProvider}
             premiumStatus={user?.premiumStatus}
+            sessionState={profileSessionState}
+            saveState={profileSaveState}
           />
         ) : null}
         <View style={styles.bottomSpacer} />
@@ -191,42 +167,60 @@ function SplashScreen() {
   );
 }
 
-/* ───── Login ───── */
-
-function LoginScreen({
-  loading,
-  hasError,
-  onLogin,
-}: {
-  loading: boolean;
-  hasError: boolean;
-  onLogin: () => void;
-}) {
+function RestoreScreen() {
   const { c, mode } = useTheme();
   const { language } = useSessionStore();
+  const t = getCopy(language);
   return (
     <View style={[styles.splashPage, { backgroundColor: c.bg }]}>
       <StatusBar style={mode === "dark" ? "light" : "dark"} />
       <Text style={[styles.splashKicker, { color: c.gray }]}>pixel pet arena</Text>
-      <Text style={[styles.loginHeadline, { color: c.text }]}>
-        {language === "ko" ? "트레이너 로그인" : "trainer login"}
-      </Text>
-      <Text style={[styles.loginCopy, { color: c.gray }]}>
-        {language === "ko"
-          ? "게임 데이터를 연결한 뒤\n홈 화면으로 이동합니다."
-          : "link your trainer data\nand enter the home screen."}
-      </Text>
-      <Pressable style={[styles.enterButton, { borderColor: c.divider }]} onPress={onLogin}>
+      <Text style={[styles.loginHeadline, { color: c.text }]}>{t.auth.restoreTitle}</Text>
+      <Text style={[styles.loginCopy, { color: c.gray }]}>{t.auth.restoreBody}</Text>
+    </View>
+  );
+}
+
+/* ───── Login ───── */
+
+function LoginScreen({
+  status,
+  errorMessage,
+  onLogin,
+}: {
+  status: LoginStatus;
+  errorMessage?: string;
+  onLogin: () => void;
+}) {
+  const { c, mode } = useTheme();
+  const { language } = useSessionStore();
+  const t = getCopy(language);
+  const loading = status === "loading";
+  const hasError = status === "error" && Boolean(errorMessage);
+  const statusText =
+    status === "loading"
+      ? t.auth.statusLoading
+      : status === "error"
+        ? t.auth.statusError
+        : t.auth.statusIdle;
+  return (
+    <View style={[styles.splashPage, { backgroundColor: c.bg }]}>
+      <StatusBar style={mode === "dark" ? "light" : "dark"} />
+      <Text style={[styles.splashKicker, { color: c.gray }]}>pixel pet arena</Text>
+      <Text style={[styles.loginHeadline, { color: c.text }]}>{t.auth.title}</Text>
+      <Text style={[styles.loginCopy, { color: c.gray }]}>{t.auth.body}</Text>
+      <Text style={[styles.sectionLabel, { color: hasError ? c.accent : c.gray }]}>{statusText}</Text>
+      <Pressable
+        style={[styles.enterButton, { borderColor: c.divider }, loading && styles.actionButtonDisabled]}
+        disabled={loading}
+        onPress={onLogin}
+      >
         <Text style={[styles.enterButtonText, { color: c.text }]}>
-          {loading ? (language === "ko" ? "접속 중..." : "connecting...") : "enter"}
+          {loading ? t.auth.connecting : t.auth.enter}
         </Text>
       </Pressable>
       {hasError ? (
-        <Text style={[styles.errorText, { color: c.accent }]}>
-          {language === "ko"
-            ? "로그인 실패. 서버를 확인하세요."
-            : "login failed. check server."}
-        </Text>
+        <Text style={[styles.errorText, { color: c.accent }]}>{errorMessage}</Text>
       ) : null}
     </View>
   );
@@ -243,7 +237,7 @@ function HomeTab({
   petExp,
   careState,
   firstPetPending,
-  firstPetError,
+  firstPetErrorMessage,
   carePending,
   onGetFirstPet,
   onCare,
@@ -256,9 +250,9 @@ function HomeTab({
   petExp?: number;
   careState?: { hunger: number; mood: number; hygiene: number; energy: number; bond: number };
   firstPetPending: boolean;
-  firstPetError: boolean;
+  firstPetErrorMessage?: string;
   carePending: boolean;
-  onGetFirstPet: (nickname?: string) => void;
+  onGetFirstPet: (nickname?: string) => Promise<unknown>;
   onCare: (action: "feed" | "clean" | "play" | "rest") => void;
 }) {
   const { c } = useTheme();
@@ -280,8 +274,22 @@ function HomeTab({
   }, []);
 
   function handleOpenNickname() { setNicknameInputKey((v) => v + 1); setNicknameOpen(true); }
-  function handleCancelNickname() { setNicknameOpen(false); setNicknameDraft(""); setNicknameInputKey((v) => v + 1); }
-  function handleConfirmFirstPet() { onGetFirstPet(nicknameDraft); setNicknameOpen(false); setNicknameDraft(""); setNicknameInputKey((v) => v + 1); }
+  function handleCancelNickname() {
+    if (firstPetPending) return;
+    setNicknameOpen(false);
+    setNicknameDraft("");
+    setNicknameInputKey((v) => v + 1);
+  }
+  async function handleConfirmFirstPet() {
+    try {
+      await onGetFirstPet(nicknameDraft);
+      setNicknameOpen(false);
+      setNicknameDraft("");
+      setNicknameInputKey((v) => v + 1);
+    } catch {
+      return;
+    }
+  }
 
   const careActions: { key: "feed" | "clean" | "play" | "rest"; icon: string; label: string }[] = [
     { key: "feed", icon: "feed", label: t.home.feed },
@@ -292,6 +300,9 @@ function HomeTab({
 
   return (
     <>
+      <Text style={[styles.sectionLabel, { color: c.grayDark }]}>
+        {hasPet ? t.home.activePet : t.home.noPet}
+      </Text>
       {/* Section 1 — Pet Info */}
       {hasPet && petTemplateElement && petTemplateName ? (
         <View style={styles.petInfoRow}>
@@ -322,7 +333,7 @@ function HomeTab({
                 <Text style={[styles.metaValue, { color: c.text }]}>{petNickname}</Text>
               </>
             ) : null}
-            <Text style={[styles.metaValue, { color: c.text, marginTop: 14 }]}>Lv. {petLevel ?? 0}</Text>
+            <Text style={[styles.metaValueBold, { color: c.text, marginTop: 14 }]}>Lv. {petLevel ?? 0}</Text>
             <DotExpBar value={petExp ?? 0} />
           </View>
         </View>
@@ -336,48 +347,65 @@ function HomeTab({
               ? "랜덤 스타터 펫을 받고\n홈 화면을 활성화하세요."
               : "roll a random starter pet\nand activate your home base."}
           </Text>
-          {!nicknameOpen ? (
-            <Pressable style={[styles.enterButton, { borderColor: c.divider }]} onPress={handleOpenNickname}>
-              <Text style={[styles.enterButtonText, { color: c.text }]}>
-                {language === "ko" ? "첫 펫 받기" : "get first pet"}
-              </Text>
-            </Pressable>
-          ) : (
-            <View style={styles.nicknameBlock}>
-              <Text style={[styles.metaLabel, { color: c.gray }]}>
-                {language === "ko" ? "별명 만들기" : "create nickname"}
-              </Text>
-              <TextInput
-                key={nicknameInputKey}
-                onChangeText={setNicknameDraft}
-                placeholder={language === "ko" ? "예: 장군" : "e.g. general"}
-                placeholderTextColor={c.grayDark}
-                style={[styles.nicknameInput, { borderBottomColor: c.divider, color: c.text }]}
-                maxLength={12}
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-              <View style={styles.nicknameActions}>
-                <Pressable onPress={handleCancelNickname}>
-                  <Text style={[styles.actionTextGray, { color: c.gray }]}>
-                    {language === "ko" ? "취소" : "cancel"}
-                  </Text>
-                </Pressable>
-                <Pressable onPress={handleConfirmFirstPet}>
-                  <Text style={[styles.actionTextWhite, { color: c.text }]}>
-                    {firstPetPending
-                      ? (language === "ko" ? "생성 중..." : "rolling...")
-                      : (language === "ko" ? "확인" : "confirm")}
-                  </Text>
-                </Pressable>
-              </View>
-              {firstPetError ? (
-                <Text style={[styles.errorText, { color: c.accent }]}>
-                  {language === "ko" ? "첫 펫 생성 실패." : "first pet roll failed."}
+          <Text style={[styles.bodyMuted, { color: c.grayDark }]}>{t.home.firstPetFlow}</Text>
+          <Pressable style={[styles.enterButton, { borderColor: c.divider }]} onPress={handleOpenNickname}>
+            <Text style={[styles.enterButtonText, { color: c.text }]}>
+              {language === "ko" ? "첫 펫 받기" : "get first pet"}
+            </Text>
+          </Pressable>
+          <Modal
+            visible={nicknameOpen}
+            transparent
+            animationType="fade"
+            onRequestClose={handleCancelNickname}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={[styles.modalBox, { backgroundColor: c.bg, borderColor: c.divider }]}>
+                <Text style={[styles.modalTitle, { color: c.text }]}>
+                  {language === "ko" ? "별명 만들기" : "create nickname"}
                 </Text>
-              ) : null}
+                <TextInput
+                  key={nicknameInputKey}
+                  onChangeText={setNicknameDraft}
+                  placeholder={language === "ko" ? "예: 장군" : "e.g. general"}
+                  placeholderTextColor={c.grayDark}
+                  style={[styles.nicknameInput, { borderBottomColor: c.divider, color: c.text }]}
+                  maxLength={12}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoFocus
+                />
+                <Text style={[styles.bodyMuted, { color: c.gray }]}>{t.home.nicknameStep}</Text>
+                <View style={styles.nicknameActions}>
+                  <Pressable
+                    style={[styles.modalButton, { borderColor: c.divider }, firstPetPending && styles.actionButtonDisabled]}
+                    disabled={firstPetPending}
+                    onPress={handleCancelNickname}
+                  >
+                    <Text style={[styles.modalButtonText, { color: c.gray }]}>
+                      {language === "ko" ? "취소" : "cancel"}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.modalButton, { borderColor: c.divider }, firstPetPending && styles.actionButtonDisabled]}
+                    disabled={firstPetPending}
+                    onPress={handleConfirmFirstPet}
+                  >
+                    <Text style={[styles.modalButtonText, { color: c.text }]}>
+                      {firstPetPending
+                        ? (language === "ko" ? "생성 중..." : "rolling...")
+                        : (language === "ko" ? "확인" : "confirm")}
+                    </Text>
+                  </Pressable>
+                </View>
+                {firstPetErrorMessage ? (
+                  <Text style={[styles.errorText, { color: c.accent }]}>
+                    {firstPetErrorMessage}
+                  </Text>
+                ) : null}
+              </View>
             </View>
-          )}
+          </Modal>
         </View>
       )}
 
@@ -544,37 +572,220 @@ const cdStyles = StyleSheet.create({
     alignItems: "center",
   },
   timerText: {
-    fontSize: 12,
-    fontFamily: FONT,
+    fontSize: 16,
+    fontFamily: FONT_BOLD,
   },
 });
 
 /* ───── Battle ───── */
 
+const ELEMENT_EMOJI: Record<ElementType, string> = {
+  fire: "🔥", water: "💧", grass: "🌿", electric: "⚡", digital: "💠",
+};
+
+type BattleFighterInfo = {
+  userId: string; name: string; element: ElementType; level: number;
+  hp: number; maxHp: number; attack: number; defense: number; speed: number;
+};
+type BattleState = {
+  battleId: string;
+  turn: number;
+  fighters: [BattleFighterInfo, BattleFighterInfo];
+  logs: any[];
+  result?: { winnerUserId: string; loserUserId: string };
+};
+
 function BattleTab({
   petTemplateName,
   petTemplateElement,
+  petTemplateId,
   queuePending,
   queueResult,
   onQueue,
+  onResetQueue,
+  token,
+  userId,
 }: {
   petTemplateName?: string;
   petTemplateElement?: ElementType;
+  petTemplateId?: string;
   queuePending: boolean;
   queueResult?: { matched: boolean; battleId?: string };
   onQueue: () => void;
+  onResetQueue: () => void;
+  token?: string;
+  userId?: string;
 }) {
   const { c } = useTheme();
   const { language } = useSessionStore();
   const t = getCopy(language);
+  const [battleState, setBattleState] = useState<BattleState | null>(null);
+  const [actionPending, setActionPending] = useState(false);
+  const enteredBattleRef = useRef<string | null>(null);
+
+  // Auto-enter battle when matched (only once per battleId)
+  useEffect(() => {
+    if (queueResult?.matched && queueResult.battleId && token && enteredBattleRef.current !== queueResult.battleId) {
+      enteredBattleRef.current = queueResult.battleId;
+      getBattleDetails(token, queueResult.battleId).then((data) => {
+        setBattleState(data);
+      });
+    }
+  }, [queueResult, token]);
+
+  async function handleAction(action: "attack" | "guard" | "skill") {
+    if (!battleState || !token || actionPending) return;
+    setActionPending(true);
+    try {
+      const result = await submitBattleAction(token, battleState.battleId, action);
+      setBattleState(result);
+    } finally {
+      setActionPending(false);
+    }
+  }
+
+  function handleBackToLobby() {
+    enteredBattleRef.current = null;
+    setBattleState(null);
+    onResetQueue();
+  }
+
+  // ───── Active Battle Screen ─────
+  if (battleState) {
+    const myId = userId ?? "";
+    const player = battleState.fighters.find((f) => f.userId === myId) ?? battleState.fighters[0];
+    const opponent = battleState.fighters.find((f) => f.userId !== myId) ?? battleState.fighters[1];
+    const isFinished = !!battleState.result;
+    const isWinner = battleState.result?.winnerUserId === myId;
+    const playerHpPct = Math.max(0, (player.hp / player.maxHp) * 100);
+    const opponentHpPct = Math.max(0, (opponent.hp / opponent.maxHp) * 100);
+
+    function hpBarColor(pct: number) {
+      if (pct <= 20) return c.accent;
+      if (pct <= 50) return "#FFA500";
+      return c.barFill;
+    }
+
+    return (
+      <>
+        {/* Turn indicator */}
+        <Text style={[bStyles.turnLabel, { color: c.gray }]}>
+          {isFinished
+            ? (isWinner ? t.battle.victory : t.battle.defeat)
+            : t.battle.turn(battleState.turn)}
+        </Text>
+
+        {/* Opponent (top) — Pokemon style: info right-aligned */}
+        <View style={bStyles.opponentArea}>
+          <View style={bStyles.fighterInfoBox}>
+            <View style={bStyles.nameRow}>
+              <Text style={[bStyles.fighterName, { color: c.text }]}>{opponent.name}</Text>
+              <Text style={[bStyles.elementBadge, { color: c.gray }]}>{ELEMENT_EMOJI[opponent.element]}</Text>
+            </View>
+            <Text style={[bStyles.levelText, { color: c.gray }]}>Lv.{opponent.level}</Text>
+            <View style={bStyles.hpRow}>
+              <Text style={[bStyles.hpLabel, { color: c.gray }]}>{t.battle.hp}</Text>
+              <View style={[bStyles.hpTrack, { backgroundColor: c.barTrack }]}>
+                <View style={[bStyles.hpFill, { width: `${opponentHpPct}%`, backgroundColor: hpBarColor(opponentHpPct) }]} />
+              </View>
+            </View>
+            <Text style={[bStyles.hpNumbers, { color: c.gray }]}>{opponent.hp} / {opponent.maxHp}</Text>
+          </View>
+        </View>
+
+        {/* VS divider */}
+        <View style={bStyles.vsRow}>
+          <View style={[bStyles.vsDivider, { backgroundColor: c.divider }]} />
+          <Text style={[bStyles.vsText, { color: c.gray }]}>{t.battle.vs}</Text>
+          <View style={[bStyles.vsDivider, { backgroundColor: c.divider }]} />
+        </View>
+
+        {/* Player (bottom) — Pokemon style: info left-aligned */}
+        <View style={bStyles.playerArea}>
+          <View style={bStyles.fighterInfoBox}>
+            <View style={bStyles.nameRow}>
+              <Text style={[bStyles.fighterName, { color: c.text }]}>{player.name}</Text>
+              <Text style={[bStyles.elementBadge, { color: c.gray }]}>{ELEMENT_EMOJI[player.element]}</Text>
+            </View>
+            <Text style={[bStyles.levelText, { color: c.gray }]}>Lv.{player.level}</Text>
+            <View style={bStyles.hpRow}>
+              <Text style={[bStyles.hpLabel, { color: c.gray }]}>{t.battle.hp}</Text>
+              <View style={[bStyles.hpTrack, { backgroundColor: c.barTrack }]}>
+                <View style={[bStyles.hpFill, { width: `${playerHpPct}%`, backgroundColor: hpBarColor(playerHpPct) }]} />
+              </View>
+            </View>
+            <Text style={[bStyles.hpNumbers, { color: c.gray }]}>{player.hp} / {player.maxHp}</Text>
+          </View>
+          {/* Stat chips */}
+          <View style={bStyles.statChips}>
+            <Text style={[bStyles.statChip, { color: c.gray, borderColor: c.divider }]}>{t.battle.atk} {player.attack}</Text>
+            <Text style={[bStyles.statChip, { color: c.gray, borderColor: c.divider }]}>{t.battle.def} {player.defense}</Text>
+            <Text style={[bStyles.statChip, { color: c.gray, borderColor: c.divider }]}>{t.battle.spd} {player.speed}</Text>
+          </View>
+        </View>
+
+        <View style={[styles.divider, { backgroundColor: c.divider }]} />
+
+        {/* Action buttons or result */}
+        {isFinished ? (
+          <View style={bStyles.resultArea}>
+            <Text style={[bStyles.resultText, { color: isWinner ? c.text : c.accent }]}>
+              {isWinner ? t.battle.victory : t.battle.defeat}
+            </Text>
+            <Pressable style={[styles.enterButton, { borderColor: c.divider }]} onPress={handleBackToLobby}>
+              <Text style={[styles.battleBtnText, { color: c.text }]}>{t.battle.backToLobby}</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <View style={bStyles.actionArea}>
+            <Pressable
+              style={[bStyles.actionBtn, { borderColor: c.divider }]}
+              disabled={actionPending}
+              onPress={() => handleAction("attack")}
+            >
+              <Text style={[bStyles.actionBtnText, { color: c.text }]}>{t.battle.attack}</Text>
+            </Pressable>
+            <Pressable
+              style={[bStyles.actionBtn, { borderColor: c.divider }]}
+              disabled={actionPending}
+              onPress={() => handleAction("skill")}
+            >
+              <Text style={[bStyles.actionBtnText, { color: c.text }]}>{t.battle.skill}</Text>
+            </Pressable>
+            <Pressable
+              style={[bStyles.actionBtn, { borderColor: c.divider }]}
+              disabled={actionPending}
+              onPress={() => handleAction("guard")}
+            >
+              <Text style={[bStyles.actionBtnText, { color: c.text }]}>{t.battle.guard}</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {/* Battle log */}
+        {battleState.logs.length > 0 ? (
+          <View style={bStyles.logArea}>
+            <Text style={[bStyles.logTitle, { color: c.gray }]}>{t.battle.battleLog}</Text>
+            {battleState.logs.map((log: any, i: number) => {
+              const isPlayer = log.actorUserId === myId;
+              const actorName = isPlayer ? player.name : opponent.name;
+              return (
+                <Text key={i} style={[bStyles.logEntry, { color: isPlayer ? c.text : c.gray }]}>
+                  {actorName}: {log.action === "guard" ? t.battle.guarded : t.battle.dmg(log.damage)}
+                </Text>
+              );
+            })}
+          </View>
+        ) : null}
+      </>
+    );
+  }
+
+  // ───── Battle Lobby ─────
   const elements: ElementType[] = ["fire", "water", "grass", "electric", "digital"];
   const fighterLabel = petTemplateName && petTemplateElement
     ? `${petTemplateName} / ${getElementLabel(language, petTemplateElement)}`
     : t.battle.none;
-
-  const elementEmoji: Record<ElementType, string> = {
-    fire: "🔥", water: "💧", grass: "🌿", electric: "⚡", digital: "💠",
-  };
 
   return (
     <>
@@ -591,9 +802,9 @@ function BattleTab({
             {queuePending ? t.battle.matching : t.battle.enterQueue}
           </Text>
         </Pressable>
-        {queueResult ? (
+        {queueResult && !queueResult.matched ? (
           <Text style={[styles.battleBody, { color: c.text }]}>
-            {queueResult.matched ? t.battle.matched(queueResult.battleId) : t.battle.waiting}
+            {t.battle.waiting}
           </Text>
         ) : null}
       </View>
@@ -607,18 +818,18 @@ function BattleTab({
           return (
             <View key={element} style={[styles.elementCard, { borderBottomColor: c.divider }]}>
               <View style={styles.elementHeader}>
-                <Text style={styles.elementEmoji}>{elementEmoji[element]}</Text>
+                <Text style={styles.elementEmoji}>{ELEMENT_EMOJI[element]}</Text>
                 <Text style={[styles.elementNameBig, { color: c.text }]}>{getElementLabel(language, element)}</Text>
               </View>
               <View style={styles.elementAdvantages}>
                 <View style={styles.elementAdvCol}>
                   <Text style={[styles.elementAdvLabel, { color: c.gray }]}>{t.battle.strong}</Text>
-                  <Text style={styles.elementAdvEmoji}>{strong ? elementEmoji[strong] : "-"}</Text>
+                  <Text style={styles.elementAdvEmoji}>{strong ? ELEMENT_EMOJI[strong] : "-"}</Text>
                   <Text style={[styles.elementAdvValue, { color: c.text }]}>{strong ? getElementLabel(language, strong) : "-"}</Text>
                 </View>
                 <View style={styles.elementAdvCol}>
                   <Text style={[styles.elementAdvLabel, { color: c.gray }]}>{t.battle.edge}</Text>
-                  <Text style={styles.elementAdvEmoji}>{weak ? elementEmoji[weak] : "-"}</Text>
+                  <Text style={styles.elementAdvEmoji}>{weak ? ELEMENT_EMOJI[weak] : "-"}</Text>
                   <Text style={[styles.elementAdvValue, { color: c.text }]}>{weak ? getElementLabel(language, weak) : "-"}</Text>
                 </View>
               </View>
@@ -629,6 +840,36 @@ function BattleTab({
     </>
   );
 }
+
+/* ───── Battle Styles ───── */
+const bStyles = StyleSheet.create({
+  turnLabel: { fontSize: 12, fontFamily: FONT_BOLD, textAlign: "center", letterSpacing: 2, marginBottom: 8 },
+  opponentArea: { alignItems: "flex-end", marginBottom: 16 },
+  playerArea: { alignItems: "flex-start", marginTop: 16 },
+  fighterInfoBox: { gap: 4, minWidth: 200 },
+  nameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  fighterName: { fontSize: 14, fontFamily: FONT_BOLD },
+  elementBadge: { fontSize: 16 },
+  levelText: { fontSize: 11, fontFamily: FONT },
+  hpRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 },
+  hpLabel: { fontSize: 10, fontFamily: FONT_BOLD, width: 24 },
+  hpTrack: { flex: 1, height: 8 },
+  hpFill: { height: 8 },
+  hpNumbers: { fontSize: 10, fontFamily: FONT, textAlign: "right" },
+  statChips: { flexDirection: "row", gap: 8, marginTop: 8 },
+  statChip: { fontSize: 10, fontFamily: FONT, borderWidth: 2, paddingHorizontal: 8, paddingVertical: 4 },
+  vsRow: { flexDirection: "row", alignItems: "center", gap: 12, marginVertical: 8 },
+  vsDivider: { flex: 1, height: 2 },
+  vsText: { fontSize: 16, fontFamily: FONT_BOLD, letterSpacing: 4 },
+  actionArea: { flexDirection: "row", gap: 10, marginTop: 16 },
+  actionBtn: { flex: 1, borderWidth: 2, paddingVertical: 14, alignItems: "center" },
+  actionBtnText: { fontSize: 12, fontFamily: FONT_BOLD, letterSpacing: 1 },
+  resultArea: { alignItems: "center", gap: 16, marginTop: 16 },
+  resultText: { fontSize: 20, fontFamily: FONT_BOLD, letterSpacing: 2 },
+  logArea: { marginTop: 16, gap: 6 },
+  logTitle: { fontSize: 11, fontFamily: FONT_BOLD, letterSpacing: 1, marginBottom: 4 },
+  logEntry: { fontSize: 10, fontFamily: FONT, lineHeight: 18 },
+});
 
 /* ───── Collection ───── */
 
@@ -672,25 +913,63 @@ function CollectionTab({
 
 function ProfileTab({
   onLanguageChange,
+  onLogout,
+  apiSummary,
   userName,
   provider,
   premiumStatus,
+  sessionState,
+  saveState,
 }: {
   onLanguageChange: (language: AppLanguage) => void;
+  onLogout: () => void;
+  apiSummary: string;
   userName?: string;
   provider?: string;
   premiumStatus?: string;
+  sessionState: ProfileSessionState;
+  saveState: ProfileSaveState;
 }) {
   const { c, mode, toggle } = useTheme();
   const { language } = useSessionStore();
   const t = getCopy(language);
+  const premiumModeLabel = language === "ko" ? "프리미엄 모드" : "PREMIUM MODE";
+  const premiumModeValue = premiumStatus === "premium" ? "DEV ON" : "DEV OFF";
+  const premiumTitle = language === "ko" ? "프리미엄 프로토타입" : "Premium Prototype";
+  const premiumBody1 = language === "ko"
+    ? "이 빌드에는 실제 프리미엄 판매나 결제 연결이 없습니다."
+    : "This build does not sell premium access or connect to app-store billing.";
+  const premiumBody2 = language === "ko"
+    ? "내부 테스트에서는 서버의 개발용 토글로만 프리미엄 상태를 잠시 켤 수 있습니다."
+    : "Internal testing can only unlock premium through the server-side dev toggle.";
+  const premiumBody3 = language === "ko"
+    ? "영수증 검증과 실제 구매 흐름은 나중에 따로 붙일 예정입니다."
+    : "Receipt verification and real purchase flow are postponed until later.";
   return (
     <>
       <Text style={[styles.profileTitle, { color: c.text }]}>{t.profile.title}</Text>
       <View style={styles.profileInfo}>
         <ProfileRow label={t.profile.name} value={userName ?? t.profile.defaultName} />
-        <ProfileRow label={t.profile.login} value={(provider ?? "google").toUpperCase()} />
-        <ProfileRow label={t.profile.pass} value={(premiumStatus ?? "free").toUpperCase()} />
+        <ProfileRow label={t.profile.login} value={(provider ?? "demo").toUpperCase()} />
+        <ProfileRow label={premiumModeLabel} value={premiumModeValue} />
+        <ProfileRow
+          label={t.profile.sessionStateLabel}
+          value={sessionState === "active" ? t.profile.sessionActive : t.profile.sessionInactive}
+        />
+        <ProfileRow
+          label={t.profile.saveStateLabel}
+          value={saveState === "local-only" ? t.profile.saveLocalOnly : t.profile.savePending}
+        />
+      </View>
+
+      <View style={[styles.divider, { backgroundColor: c.divider }]} />
+      <Text style={[styles.profileSectionLabel, { color: c.grayDark }]}>{t.profile.sessionTitle}</Text>
+      <Text style={[styles.profileBody, { color: c.gray }]}>{t.profile.sessionBody}</Text>
+      <Text style={[styles.profileBody, { color: c.gray }]}>{apiSummary}</Text>
+      <View style={styles.langRow}>
+        <Pressable onPress={onLogout}>
+          <Text style={[styles.profileOption, { color: c.text }]}>{t.profile.logout}</Text>
+        </Pressable>
       </View>
 
       <View style={[styles.divider, { backgroundColor: c.divider }]} />
@@ -724,10 +1003,10 @@ function ProfileTab({
       </View>
 
       <View style={[styles.divider, { backgroundColor: c.divider }]} />
-      <Text style={[styles.profileSectionLabel, { color: c.grayDark }]}>{t.profile.premiumTitle}</Text>
-      <Text style={[styles.profileBody, { color: c.gray }]}>{t.profile.premium1}</Text>
-      <Text style={[styles.profileBody, { color: c.gray }]}>{t.profile.premium2}</Text>
-      <Text style={[styles.profileBody, { color: c.gray }]}>{t.profile.premium3}</Text>
+      <Text style={[styles.profileSectionLabel, { color: c.grayDark }]}>{premiumTitle}</Text>
+      <Text style={[styles.profileBody, { color: c.gray }]}>{premiumBody1}</Text>
+      <Text style={[styles.profileBody, { color: c.gray }]}>{premiumBody2}</Text>
+      <Text style={[styles.profileBody, { color: c.gray }]}>{premiumBody3}</Text>
     </>
   );
 }
@@ -745,7 +1024,10 @@ function ProfileRow({ label, value }: { label: string; value: string }) {
 /* ───── Root ───── */
 
 export default function App() {
-  const [fontsLoaded] = useFonts({ PressStart2P_400Regular });
+  const [fontsLoaded] = useFonts({
+    Mona12: require("./assets/fonts/Mona12.ttf"),
+    "Mona12-Bold": require("./assets/fonts/Mona12-Bold.ttf"),
+  });
   const [themeMode, setThemeMode] = useState<ThemeMode>("dark");
 
   useEffect(() => {
@@ -784,19 +1066,19 @@ export default function App() {
 const styles = StyleSheet.create({
   page: { flex: 1 },
   content: { paddingHorizontal: 24, paddingTop: 56, gap: 24 },
-  splashPage: { flex: 1, justifyContent: "center", alignItems: "center", padding: 24, gap: 4 },
+  splashPage: { flex: 1, justifyContent: "center", alignItems: "center", padding: 24, gap: 6 },
   bottomSpacer: { height: 96 },
 
-  splashKicker: { fontSize: 10, fontFamily: FONT, letterSpacing: 2, marginBottom: 12 },
-  splashTitle: { fontSize: 24, fontFamily: FONT, letterSpacing: 4 },
+  splashKicker: { fontSize: 14, fontFamily: FONT, letterSpacing: 2, marginBottom: 16 },
+  splashTitle: { fontSize: 32, fontFamily: FONT_BOLD, letterSpacing: 4 },
 
-  loginHeadline: { fontSize: 18, fontFamily: FONT, marginTop: 16 },
-  loginCopy: { fontSize: 10, fontFamily: FONT, lineHeight: 22, textAlign: "center", maxWidth: 300, marginTop: 8 },
-  enterButton: { marginTop: 20, borderWidth: 2, paddingHorizontal: 32, paddingVertical: 14 },
-  enterButtonText: { fontSize: 10, fontFamily: FONT, letterSpacing: 2, textTransform: "lowercase" },
+  loginHeadline: { fontSize: 24, fontFamily: FONT_BOLD, marginTop: 16 },
+  loginCopy: { fontSize: 13, fontFamily: FONT, lineHeight: 26, textAlign: "center", maxWidth: 320, marginTop: 10 },
+  enterButton: { marginTop: 24, borderWidth: 2, paddingHorizontal: 40, paddingVertical: 16 },
+  enterButtonText: { fontSize: 14, fontFamily: FONT, letterSpacing: 2, textTransform: "lowercase" },
 
   divider: { height: 2 },
-  sectionTitle: { fontSize: 14, fontFamily: FONT, letterSpacing: 1 },
+  sectionTitle: { fontSize: 14, fontFamily: FONT_BOLD, letterSpacing: 1 },
   sectionLabel: { fontSize: 10, fontFamily: FONT, letterSpacing: 2, textTransform: "lowercase" },
   bodyText: { fontSize: 10, fontFamily: FONT, lineHeight: 22 },
   bodyMuted: { fontSize: 9, fontFamily: FONT, lineHeight: 20 },
@@ -805,42 +1087,46 @@ const styles = StyleSheet.create({
   petImageArea: { width: "70%", justifyContent: "center", alignItems: "center", paddingVertical: 40 },
   petImageBorder: { position: "absolute", bottom: 0, left: 0, right: 0, height: 2 },
   petMetaArea: { width: "30%", paddingLeft: 16, justifyContent: "center", gap: 6 },
-  metaLabel: { fontSize: 11, fontFamily: FONT, textTransform: "lowercase", marginTop: 10 },
-  metaValue: { fontSize: 12, fontFamily: FONT },
-  metaValueBold: { fontSize: 13, fontFamily: FONT, fontWeight: "700" },
-  metaValueItalic: { fontSize: 11, fontFamily: FONT, fontStyle: "italic", textTransform: "lowercase" },
+  metaLabel: { fontSize: 12, fontFamily: FONT, textTransform: "lowercase", marginTop: 10 },
+  metaValue: { fontSize: 14, fontFamily: FONT },
+  metaValueBold: { fontSize: 14, fontFamily: FONT_BOLD },
+  metaValueItalic: { fontSize: 12, fontFamily: FONT, fontStyle: "italic", textTransform: "lowercase" },
 
   dotExpRow: { flexDirection: "row", gap: 2, marginTop: 2 },
   dotExpCell: { width: 5, height: 5 },
 
   emptySection: { gap: 12 },
-  emptyHeadline: { fontSize: 16, fontFamily: FONT },
+  emptyHeadline: { fontSize: 16, fontFamily: FONT_BOLD },
   emptyBody: { fontSize: 10, fontFamily: FONT, lineHeight: 22 },
 
-  nicknameBlock: { gap: 10, marginTop: 8 },
+  modalOverlay: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.7)", padding: 24 },
+  modalBox: { width: "100%", borderWidth: 2, padding: 24, gap: 16 },
+  modalTitle: { fontSize: 13, fontFamily: FONT_BOLD, letterSpacing: 1, textAlign: "center" },
   nicknameInput: { borderBottomWidth: 2, fontSize: 12, fontFamily: FONT, paddingVertical: 8 },
-  nicknameActions: { flexDirection: "row", gap: 24 },
+  nicknameActions: { flexDirection: "row", gap: 16, justifyContent: "center" },
+  modalButton: { flex: 1, borderWidth: 2, paddingVertical: 14, alignItems: "center" },
+  modalButtonText: { fontSize: 11, fontFamily: FONT, letterSpacing: 1 },
   actionTextGray: { fontSize: 10, fontFamily: FONT, textTransform: "lowercase" },
   actionTextWhite: { fontSize: 10, fontFamily: FONT, textTransform: "lowercase" },
 
   statusSection: { gap: 18 },
   statRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  statLabel: { width: 80, fontSize: 11, fontFamily: FONT, textTransform: "lowercase" },
-  statTrack: { flex: 1, height: 4 },
-  statFill: { height: 4 },
-  statValue: { width: 36, fontSize: 11, fontFamily: FONT, textAlign: "right" },
+  statLabel: { width: 80, fontSize: 12, fontFamily: FONT, textTransform: "lowercase" },
+  statTrack: { flex: 1, height: 8 },
+  statFill: { height: 8 },
+  statValue: { width: 36, fontSize: 14, fontFamily: FONT, textAlign: "right" },
 
   actionRow: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   actionButtonWrap: { width: "47%", position: "relative" as const },
   actionButton: { width: "100%", alignItems: "center", paddingVertical: 14, borderWidth: 2 },
   actionButtonDisabled: { opacity: 0.3 },
   actionInner: { alignItems: "center", gap: 8 },
-  actionLabel: { fontSize: 9, fontFamily: FONT, textTransform: "lowercase" },
+  actionLabel: { fontSize: 12, fontFamily: FONT, textTransform: "lowercase" },
 
   errorText: { fontSize: 9, fontFamily: FONT, marginTop: 8 },
 
   battleHeader: { gap: 12 },
-  battleTitle: { fontSize: 18, fontFamily: FONT, letterSpacing: 1 },
+  battleTitle: { fontSize: 18, fontFamily: FONT_BOLD, letterSpacing: 1 },
   battleBody: { fontSize: 12, fontFamily: FONT, lineHeight: 24 },
   battleMuted: { fontSize: 11, fontFamily: FONT, lineHeight: 22 },
   battleBtnText: { fontSize: 12, fontFamily: FONT, letterSpacing: 2, textTransform: "lowercase" },
@@ -849,7 +1135,7 @@ const styles = StyleSheet.create({
   elementCard: { paddingVertical: 12, borderBottomWidth: 2, gap: 8 },
   elementHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
   elementEmoji: { fontSize: 20 },
-  elementNameBig: { fontSize: 14, fontFamily: FONT },
+  elementNameBig: { fontSize: 14, fontFamily: FONT_BOLD },
   elementAdvantages: { flexDirection: "row", gap: 24, paddingLeft: 30 },
   elementAdvCol: { alignItems: "center", gap: 4 },
   elementAdvLabel: { fontSize: 9, fontFamily: FONT, textTransform: "lowercase" },
@@ -858,22 +1144,22 @@ const styles = StyleSheet.create({
 
   collectionGrid: { flexDirection: "row", flexWrap: "wrap", gap: 16 },
   collectionItem: { width: "46%", alignItems: "center", gap: 6, paddingVertical: 12, borderBottomWidth: 2 },
-  collectionName: { fontSize: 10, fontFamily: FONT },
-  collectionMeta: { fontSize: 8, fontFamily: FONT, textTransform: "lowercase" },
-  collectionMotif: { fontSize: 8, fontFamily: FONT, textAlign: "center", lineHeight: 16 },
+  collectionName: { fontSize: 12, fontFamily: FONT },
+  collectionMeta: { fontSize: 10, fontFamily: FONT, textTransform: "lowercase" },
+  collectionMotif: { fontSize: 10, fontFamily: FONT, textAlign: "center", lineHeight: 18 },
 
-  profileTitle: { fontSize: 16, fontFamily: FONT, letterSpacing: 1 },
-  profileSectionLabel: { fontSize: 12, fontFamily: FONT, letterSpacing: 2, textTransform: "lowercase" },
-  profileBody: { fontSize: 11, fontFamily: FONT, lineHeight: 22 },
+  profileTitle: { fontSize: 18, fontFamily: FONT_BOLD, letterSpacing: 1 },
+  profileSectionLabel: { fontSize: 14, fontFamily: FONT, letterSpacing: 2, textTransform: "lowercase" },
+  profileBody: { fontSize: 13, fontFamily: FONT, lineHeight: 24 },
   profileInfo: { gap: 8 },
   profileRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 6, borderBottomWidth: 2 },
-  profileLabel: { fontSize: 12, fontFamily: FONT, textTransform: "lowercase" },
-  profileValue: { fontSize: 12, fontFamily: FONT },
+  profileLabel: { fontSize: 14, fontFamily: FONT, textTransform: "lowercase" },
+  profileValue: { fontSize: 14, fontFamily: FONT },
   langRow: { flexDirection: "row", gap: 24 },
-  langOption: { fontSize: 10, fontFamily: FONT, paddingVertical: 6 },
-  profileOption: { fontSize: 12, fontFamily: FONT, paddingVertical: 6 },
+  langOption: { fontSize: 12, fontFamily: FONT, paddingVertical: 6 },
+  profileOption: { fontSize: 14, fontFamily: FONT, paddingVertical: 6 },
 
   tabDock: { position: "absolute", left: 0, right: 0, bottom: 0, flexDirection: "row", borderTopWidth: 2 },
   tabButton: { flex: 1, alignItems: "center", paddingVertical: 20 },
-  tabLabel: { fontSize: 13, fontFamily: FONT, letterSpacing: 2, textTransform: "lowercase" },
+  tabLabel: { fontSize: 14, fontFamily: FONT, letterSpacing: 2, textTransform: "lowercase" },
 });

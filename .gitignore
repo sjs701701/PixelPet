@@ -3,5 +3,7 @@ dist
 .expo
 .turbo
 .env
+apps/mobile/.env.local
 coverage
 apps/server/prisma/dev.db
+apps/server/data/

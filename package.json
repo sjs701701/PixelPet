@@ -10,6 +10,9 @@
     "dev:mobile": "npm run dev --workspace @pixel-pet-arena/mobile",
     "dev:server": "npm run dev --workspace @pixel-pet-arena/server",
     "build": "npm run build --workspace @pixel-pet-arena/shared && npm run build --workspace @pixel-pet-arena/server",
-    "test": "npm run test --workspace @pixel-pet-arena/shared"
+    "test": "npm run test --workspace @pixel-pet-arena/shared && npm run test --workspace @pixel-pet-arena/server && npm run test --workspace @pixel-pet-arena/mobile"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.9"
   }
 }

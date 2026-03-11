@@ -2,7 +2,7 @@ export type ElementType = "fire" | "water" | "grass" | "electric" | "digital";
 
 export type AdvantageTier = "strong" | "weak" | "neutral";
 
-export type LoginProvider = "google" | "apple";
+export type LoginProvider = "google" | "apple" | "demo";
 
 export type PremiumStatus = "free" | "premium";
 
@@ -59,6 +59,7 @@ export interface PetInstance {
   id: string;
   ownerId: string;
   templateId: string;
+  nickname?: string;
   level: number;
   experience: number;
   careState: CareState;
@@ -72,6 +73,7 @@ export interface User {
   displayName: string;
   loginProvider: LoginProvider;
   premiumStatus: PremiumStatus;
+  installId?: string;
 }
 
 export interface Item {
