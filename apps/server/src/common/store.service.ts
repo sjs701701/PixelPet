@@ -79,7 +79,7 @@ export class StoreService {
       templateId: template.id,
       nickname: safeNickname,
       level: 1,
-      experience: 35,
+      experience: 0,
       lifeState: "alive",
       careState: { ...DEFAULT_CARE_STATE },
       inventoryLoadout: {},

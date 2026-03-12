@@ -7,6 +7,7 @@ export type LoginProvider = "google" | "apple" | "demo";
 export type PremiumStatus = "free" | "premium";
 
 export type BattleAction = "attack" | "guard" | "skill";
+export type CareAction = "feed" | "clean" | "play" | "rest";
 
 export type PetLifeState = "good" | "alive" | "critical" | "dead";
 

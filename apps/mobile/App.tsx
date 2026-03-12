@@ -3,14 +3,17 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useFonts } from "expo-font";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Animated, AppState, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import {
   BaseStats,
+  CareAction,
+  CareState,
   ElementType,
   PET_TEMPLATES,
   PetLifeState,
   PetTraitId,
   getElementAdvantageTier,
+  getCareActionDurationMs,
   getExpRequiredForLevel,
 } from "@pixel-pet-arena/shared";
 import { PetSprite } from "./components/PetSprite";
@@ -39,7 +42,77 @@ const THEME_KEY = "pixelpet.theme";
 const STAT_THRESHOLD = 30;
 const FONT = "Mona12";
 const FONT_BOLD = "Mona12-Bold";
-const COOLDOWN_MS = 10000;
+
+/** Retro flicker button — blink 2 times then fire onPress */
+const FLICKER_STEPS = 4;
+const FLICKER_INTERVAL = 40;
+
+type ActiveCareTask = {
+  id: number;
+  action: CareAction;
+  durationMs: number;
+  startedAt: number;
+  endsAt: number;
+  status: "running" | "completing";
+};
+
+function FlickerButton({
+  onPress,
+  disabled,
+  style,
+  testID,
+  hitSlop,
+  children,
+}: {
+  onPress?: () => void;
+  disabled?: boolean;
+  style?: any;
+  testID?: string;
+  hitSlop?: number;
+  children: (inverted: boolean) => React.ReactNode;
+}) {
+  const { c } = useTheme();
+  const [inverted, setInverted] = useState(false);
+  const intervalRef = useRef<number | null>(null);
+  const animatingRef = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current !== null) clearInterval(intervalRef.current);
+    };
+  }, []);
+
+  const handlePress = useCallback(() => {
+    if (disabled || animatingRef.current) return;
+    animatingRef.current = true;
+    let count = 0;
+    setInverted(true);
+    intervalRef.current = setInterval(() => {
+      count++;
+      if (count >= FLICKER_STEPS) {
+        if (intervalRef.current !== null) clearInterval(intervalRef.current);
+        intervalRef.current = null;
+        setInverted(false);
+        animatingRef.current = false;
+        onPress?.();
+        return;
+      }
+      setInverted((v) => !v);
+    }, FLICKER_INTERVAL) as unknown as number;
+  }, [disabled, onPress]);
+
+  return (
+    <Pressable
+      testID={testID}
+      style={[style, inverted ? { backgroundColor: c.text } : undefined]}
+      disabled={disabled}
+      onPress={handlePress}
+      hitSlop={hitSlop}
+    >
+      {children(inverted)}
+    </Pressable>
+  );
+}
 
 function AppShell() {
   const { c, mode } = useTheme();
@@ -67,11 +140,15 @@ function AppShell() {
     queuePending,
     queueResult,
     apiSummary,
+    premiumDevEnabled,
+    premiumTogglePending,
+    premiumErrorMessage,
     handleLogin,
     handleLogout,
     handleRefreshPet,
     handleGetFirstPet,
     handleCare,
+    handleTogglePremiumDev,
     handleRevivePet,
     handleAcceptDeath,
     handleQueue,
@@ -79,6 +156,9 @@ function AppShell() {
   } = useAppShellState();
   const t = getCopy(language);
   const [dismissedDangerKey, setDismissedDangerKey] = useState<string>();
+  const [activeCareTask, setActiveCareTask] = useState<ActiveCareTask>();
+  const [pendingCareTab, setPendingCareTab] = useState<TabKey>();
+  const [careLeaveModalOpen, setCareLeaveModalOpen] = useState(false);
   const dangerPopupKey = useMemo(() => {
     if (!pet || (pet.lifeState !== "critical" && pet.lifeState !== "dead")) {
       return undefined;
@@ -92,6 +172,103 @@ function AppShell() {
       setDismissedDangerKey(undefined);
     }
   }, [dangerPopupKey, user?.id]);
+
+  useEffect(() => {
+    if (startupPhase !== "app" || !pet?.id) {
+      setActiveCareTask(undefined);
+      setCareLeaveModalOpen(false);
+      setPendingCareTab(undefined);
+    }
+  }, [pet?.id, startupPhase]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState !== "active") {
+        setActiveCareTask((current) => (current?.status === "running" ? undefined : current));
+        setCareLeaveModalOpen(false);
+        setPendingCareTab(undefined);
+      }
+    });
+
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
+    if (!activeCareTask || activeCareTask.status !== "running") {
+      return;
+    }
+
+    const delay = Math.max(0, activeCareTask.endsAt - Date.now());
+    const timeout = setTimeout(() => {
+      setActiveCareTask((current) => (
+        current?.id === activeCareTask.id
+          ? { ...current, status: "completing" }
+          : current
+      ));
+
+      handleCare(activeCareTask.action)
+        .catch(() => undefined)
+        .finally(() => {
+          setActiveCareTask((current) => (current?.id === activeCareTask.id ? undefined : current));
+        });
+    }, delay);
+
+    return () => clearTimeout(timeout);
+  }, [activeCareTask, handleCare]);
+
+  const careActionLabels = useMemo<Record<CareAction, string>>(() => ({
+    feed: t.home.feed,
+    clean: t.home.clean,
+    play: t.home.play,
+    rest: t.home.rest,
+  }), [t]);
+
+  const handleStartCare = useCallback((action: CareAction) => {
+    if (!pet?.id || activeCareTask || carePending || pet.lifeState === "dead") {
+      return;
+    }
+
+    const startedAt = Date.now();
+    const durationMs = getCareActionDurationMs(action, user?.premiumStatus === "premium");
+
+    setActiveCareTask({
+      id: startedAt,
+      action,
+      durationMs,
+      startedAt,
+      endsAt: startedAt + durationMs,
+      status: "running",
+    });
+  }, [activeCareTask, carePending, pet?.id, pet?.lifeState, user?.premiumStatus]);
+
+  const handleDismissCareLeave = useCallback(() => {
+    setCareLeaveModalOpen(false);
+    setPendingCareTab(undefined);
+  }, []);
+
+  const handleConfirmCancelAndMove = useCallback(() => {
+    const nextTab = pendingCareTab;
+    setActiveCareTask(undefined);
+    setCareLeaveModalOpen(false);
+    setPendingCareTab(undefined);
+    if (nextTab) {
+      setTab(nextTab);
+    }
+  }, [pendingCareTab, setTab]);
+
+  const handleTabPress = useCallback((nextTab: TabKey) => {
+    if (nextTab === tab) {
+      return;
+    }
+
+    if (activeCareTask?.status === "running") {
+      setPendingCareTab(nextTab);
+      setCareLeaveModalOpen(true);
+      return;
+    }
+
+    setTab(nextTab);
+  }, [activeCareTask?.status, setTab, tab]);
 
   const tabs: { key: TabKey; label: string }[] = [
     { key: "home", label: t.tabs.home },
@@ -125,6 +302,7 @@ function AppShell() {
             petTemplateElement={homeShowcaseTemplate?.element}
             petBaseStats={homeShowcaseTemplate?.baseStats}
             petTraitId={homeShowcaseTemplate?.traitId}
+            petFlavorText={homeShowcaseTemplate?.flavorText}
             petLifeState={pet?.lifeState}
             petCriticalSince={pet?.criticalSince}
             petFreeRevivesRemaining={pet?.freeRevivesRemaining}
@@ -138,9 +316,10 @@ function AppShell() {
             carePending={carePending}
             revivePending={revivePending}
             acceptDeathPending={acceptDeathPending}
+            activeCareTask={activeCareTask}
             onDismissDangerPopup={(key) => setDismissedDangerKey(key)}
             onGetFirstPet={handleGetFirstPet}
-            onCare={handleCare}
+            onStartCare={handleStartCare}
             onRevive={handleRevivePet}
             onAcceptDeath={handleAcceptDeath}
           />
@@ -174,8 +353,12 @@ function AppShell() {
             userName={user?.displayName}
             provider={user?.loginProvider}
             premiumStatus={user?.premiumStatus}
+            premiumDevEnabled={premiumDevEnabled}
+            premiumTogglePending={premiumTogglePending}
+            premiumErrorMessage={premiumErrorMessage}
             sessionState={profileSessionState}
             saveState={profileSaveState}
+            onTogglePremiumDev={handleTogglePremiumDev}
           />
         ) : null}
         <View style={styles.bottomSpacer} />
@@ -184,12 +367,53 @@ function AppShell() {
         {tabs.map((item) => {
           const active = item.key === tab;
           return (
-            <Pressable key={item.key} onPress={() => setTab(item.key)} style={styles.tabButton}>
+            <Pressable key={item.key} onPress={() => handleTabPress(item.key)} style={styles.tabButton}>
               <Text style={[styles.tabLabel, { color: active ? c.text : c.grayDark }]}>{item.label}</Text>
             </Pressable>
           );
         })}
       </View>
+      <Modal
+        visible={careLeaveModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={handleDismissCareLeave}
+      >
+        <Pressable style={styles.modalOverlay} onPress={handleDismissCareLeave}>
+          <Pressable
+            style={[styles.modalBox, { backgroundColor: c.bg, borderColor: c.divider }]}
+            onPress={(event) => event.stopPropagation()}
+          >
+            <Text style={[styles.modalTitle, { color: c.text }]}>
+              {(language === "ko"
+                ? `이동하면 진행중인 ${activeCareTask ? careActionLabels[activeCareTask.action] : ""} 가 취소됩니다.`
+                : `Moving now will cancel the current ${activeCareTask ? careActionLabels[activeCareTask.action].toLowerCase() : "care"} action.`)}
+            </Text>
+            <View style={styles.nicknameActions}>
+              <FlickerButton
+                style={[styles.modalButton, { borderColor: c.divider }]}
+                onPress={handleDismissCareLeave}
+              >
+                {(inv) => (
+                  <Text style={[styles.modalButtonText, { color: inv ? c.bg : c.gray }]}>
+                    {language === "ko" ? "계속 진행" : "keep going"}
+                  </Text>
+                )}
+              </FlickerButton>
+              <FlickerButton
+                style={[styles.modalButton, { borderColor: c.divider }]}
+                onPress={handleConfirmCancelAndMove}
+              >
+                {(inv) => (
+                  <Text style={[styles.modalButtonText, { color: inv ? c.bg : c.text }]}>
+                    {language === "ko" ? "취소 후 이동" : "cancel and move"}
+                  </Text>
+                )}
+              </FlickerButton>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -254,15 +478,17 @@ function LoginScreen({
       <Text style={[styles.loginHeadline, { color: c.text }]}>{t.auth.title}</Text>
       <Text style={[styles.loginCopy, { color: c.gray }]}>{t.auth.body}</Text>
       <Text style={[styles.sectionLabel, { color: hasError ? c.accent : c.gray }]}>{statusText}</Text>
-      <Pressable
+      <FlickerButton
         style={[styles.enterButton, { borderColor: c.divider }, loading && styles.actionButtonDisabled]}
         disabled={loading}
         onPress={onLogin}
       >
-        <Text style={[styles.enterButtonText, { color: c.text }]}>
-          {loading ? t.auth.connecting : t.auth.enter}
-        </Text>
-      </Pressable>
+        {(inv) => (
+          <Text style={[styles.enterButtonText, { color: inv ? c.bg : c.text }]}>
+            {loading ? t.auth.connecting : t.auth.enter}
+          </Text>
+        )}
+      </FlickerButton>
       {hasError ? (
         <Text style={[styles.errorText, { color: c.accent }]}>{errorMessage}</Text>
       ) : null}
@@ -280,6 +506,7 @@ function HomeTab({
   petTemplateElement,
   petBaseStats,
   petTraitId,
+  petFlavorText,
   petLifeState,
   petCriticalSince,
   petFreeRevivesRemaining,
@@ -293,9 +520,10 @@ function HomeTab({
   carePending,
   revivePending,
   acceptDeathPending,
+  activeCareTask,
   onDismissDangerPopup,
   onGetFirstPet,
-  onCare,
+  onStartCare,
   onRevive,
   onAcceptDeath,
 }: {
@@ -306,12 +534,13 @@ function HomeTab({
   petTemplateElement?: ElementType;
   petBaseStats?: BaseStats;
   petTraitId?: PetTraitId;
+  petFlavorText?: string;
   petLifeState?: PetLifeState;
   petCriticalSince?: string;
   petFreeRevivesRemaining?: number;
   petLevel?: number;
   petExp?: number;
-  careState?: { hunger: number; mood: number; hygiene: number; energy: number; bond: number };
+  careState?: CareState;
   dangerPopupKey?: string;
   dismissedDangerKey?: string;
   firstPetPending: boolean;
@@ -319,9 +548,10 @@ function HomeTab({
   carePending: boolean;
   revivePending: boolean;
   acceptDeathPending: boolean;
+  activeCareTask?: ActiveCareTask;
   onDismissDangerPopup: (key: string) => void;
   onGetFirstPet: (nickname?: string) => Promise<unknown>;
-  onCare: (action: "feed" | "clean" | "play" | "rest") => void;
+  onStartCare: (action: CareAction) => void;
   onRevive: () => Promise<unknown>;
   onAcceptDeath: () => Promise<unknown>;
 }) {
@@ -335,7 +565,6 @@ function HomeTab({
   const [dangerNow, setDangerNow] = useState(() => new Date());
   const [nicknameDraft, setNicknameDraft] = useState("");
   const [nicknameInputKey, setNicknameInputKey] = useState(0);
-  const [cooldowns, setCooldowns] = useState<Record<string, number>>({});
   const displayName = petNickname ?? petTemplateName;
   const hasTraitInfo = Boolean(hasPet && petTemplateName && petTemplateElement && petBaseStats && petTraitId);
   const dangerState = petLifeState === "critical" || petLifeState === "dead";
@@ -357,14 +586,6 @@ function HomeTab({
     { key: "defense", label: "DEF", value: petBaseStats?.defense ?? 0 },
     { key: "speed", label: "SPD", value: petBaseStats?.speed ?? 0 },
   ];
-
-  const startCooldown = useCallback((key: string) => {
-    const id = Date.now();
-    setCooldowns((prev) => ({ ...prev, [key]: id }));
-    setTimeout(() => {
-      setCooldowns((prev) => (prev[key] === id ? { ...prev, [key]: 0 } : prev));
-    }, COOLDOWN_MS);
-  }, []);
 
   function handleOpenNickname() { setNicknameInputKey((v) => v + 1); setNicknameOpen(true); }
   function handleCancelNickname() {
@@ -423,7 +644,7 @@ function HomeTab({
     return () => clearInterval(interval);
   }, [dangerModalOpen, petLifeState]);
 
-  const careActions: { key: "feed" | "clean" | "play" | "rest"; icon: string; label: string }[] = [
+  const careActions: { key: CareAction; icon: string; label: string }[] = [
     { key: "feed", icon: "feed", label: t.home.feed },
     { key: "clean", icon: "clean", label: t.home.clean },
     { key: "play", icon: "play", label: t.home.play },
@@ -460,11 +681,13 @@ function HomeTab({
               {hasTraitInfo ? (
                 <Pressable
                   testID="pet-trait-info-button"
-                  style={[styles.infoButton, { borderColor: c.divider }]}
+                  style={({ pressed }) => [styles.infoButton, { borderColor: c.divider }, pressed && { backgroundColor: c.text }]}
                   hitSlop={8}
                   onPress={() => setTraitInfoOpen(true)}
                 >
-                  <Text style={[styles.infoButtonText, { color: c.text }]}>i</Text>
+                  {({ pressed }) => (
+                    <Text style={[styles.infoButtonText, { color: pressed ? c.bg : c.text }]}>i</Text>
+                  )}
                 </Pressable>
               ) : null}
             </View>
@@ -492,11 +715,13 @@ function HomeTab({
               : "roll a random starter pet\nand activate your home base."}
           </Text>
           <Text style={[styles.bodyMuted, { color: c.grayDark }]}>{t.home.firstPetFlow}</Text>
-          <Pressable style={[styles.enterButton, { borderColor: c.divider }]} onPress={handleOpenNickname}>
-            <Text style={[styles.enterButtonText, { color: c.text }]}>
-              {language === "ko" ? "첫 펫 받기" : "get first pet"}
-            </Text>
-          </Pressable>
+          <FlickerButton style={[styles.enterButton, { borderColor: c.divider }]} onPress={handleOpenNickname}>
+            {(inv) => (
+              <Text style={[styles.enterButtonText, { color: inv ? c.bg : c.text }]}>
+                {language === "ko" ? "첫 펫 받기" : "get first pet"}
+              </Text>
+            )}
+          </FlickerButton>
           <Modal
             visible={nicknameOpen}
             transparent
@@ -506,7 +731,7 @@ function HomeTab({
             <View style={styles.modalOverlay}>
               <View style={[styles.modalBox, { backgroundColor: c.bg, borderColor: c.divider }]}>
                 <Text style={[styles.modalTitle, { color: c.text }]}>
-                  {language === "ko" ? "별명 만들기" : "create nickname"}
+                  {language === "ko" ? "이름 지어주기" : "name your pet"}
                 </Text>
                 <TextInput
                   key={nicknameInputKey}
@@ -519,28 +744,32 @@ function HomeTab({
                   autoCorrect={false}
                   autoFocus
                 />
-                <Text style={[styles.bodyMuted, { color: c.gray }]}>{t.home.nicknameStep}</Text>
+                {/* <Text style={[styles.bodyMuted, { color: c.gray }]}>{t.home.nicknameStep}</Text> */}
                 <View style={styles.nicknameActions}>
-                  <Pressable
+                  <FlickerButton
                     style={[styles.modalButton, { borderColor: c.divider }, firstPetPending && styles.actionButtonDisabled]}
                     disabled={firstPetPending}
                     onPress={handleCancelNickname}
                   >
-                    <Text style={[styles.modalButtonText, { color: c.gray }]}>
-                      {language === "ko" ? "취소" : "cancel"}
-                    </Text>
-                  </Pressable>
-                  <Pressable
+                    {(inv) => (
+                      <Text style={[styles.modalButtonText, { color: inv ? c.bg : c.gray }]}>
+                        {language === "ko" ? "취소" : "cancel"}
+                      </Text>
+                    )}
+                  </FlickerButton>
+                  <FlickerButton
                     style={[styles.modalButton, { borderColor: c.divider }, firstPetPending && styles.actionButtonDisabled]}
                     disabled={firstPetPending}
                     onPress={handleConfirmFirstPet}
                   >
-                    <Text style={[styles.modalButtonText, { color: c.text }]}>
-                      {firstPetPending
-                        ? (language === "ko" ? "생성 중..." : "rolling...")
-                        : (language === "ko" ? "확인" : "confirm")}
-                    </Text>
-                  </Pressable>
+                    {(inv) => (
+                      <Text style={[styles.modalButtonText, { color: inv ? c.bg : c.text }]}>
+                        {firstPetPending
+                          ? (language === "ko" ? "생성 중..." : "rolling...")
+                          : (language === "ko" ? "확인" : "confirm")}
+                      </Text>
+                    )}
+                  </FlickerButton>
                 </View>
                 {firstPetErrorMessage ? (
                   <Text style={[styles.errorText, { color: c.accent }]}>
@@ -566,9 +795,9 @@ function HomeTab({
             style={[styles.modalBox, { backgroundColor: c.bg, borderColor: c.divider }]}
             onPress={(event) => event.stopPropagation()}
           >
-            <Text style={[styles.modalTitle, { color: c.text }]}>{petTemplateName}</Text>
+            <Text style={[styles.traitModalTitle, { color: c.text }]}>{petTemplateName}</Text>
             {petTemplateElement ? (
-              <Text style={[styles.modalSubtitle, { color: c.gray }]}>
+              <Text style={[styles.traitModalSubtitle, { color: c.gray }]}>
                 {getElementLabel(language, petTemplateElement)}
               </Text>
             ) : null}
@@ -592,13 +821,21 @@ function HomeTab({
               <Text style={[styles.traitBattleEffect, { color: c.text }]}>{traitCopy.battleEffect}</Text>
             </View>
 
-            <Pressable
+            {petFlavorText ? (
+              <View style={[styles.traitStoryBox, { borderColor: c.divider, backgroundColor: c.barTrack }]}>
+                <Text style={[styles.traitStory, { color: c.gray }]}>{petFlavorText}</Text>
+              </View>
+            ) : null}
+
+            <FlickerButton
               testID="pet-trait-modal-close"
               style={[styles.modalButtonSingle, { borderColor: c.divider }]}
               onPress={() => setTraitInfoOpen(false)}
             >
-              <Text style={[styles.modalButtonText, { color: c.text }]}>{closeLabel}</Text>
-            </Pressable>
+              {(inv) => (
+                <Text style={[styles.modalButtonText, { color: inv ? c.bg : c.text }]}>{closeLabel}</Text>
+              )}
+            </FlickerButton>
           </Pressable>
         </Pressable>
       </Modal>
@@ -645,43 +882,41 @@ function HomeTab({
             ) : null}
             <View style={styles.dangerActions}>
               {petLifeState === "dead" && (petFreeRevivesRemaining ?? 0) > 0 ? (
-                <Pressable
-                  style={[
-                    styles.modalButton,
-                    { borderColor: c.divider },
-                    (revivePending || acceptDeathPending) && styles.actionButtonDisabled,
-                  ]}
+                <FlickerButton
+                  style={[styles.modalButton, { borderColor: c.divider }, (revivePending || acceptDeathPending) && styles.actionButtonDisabled]}
                   disabled={revivePending || acceptDeathPending}
                   onPress={() => {
                     onRevive().then(handleCloseDangerModal).catch(() => undefined);
                   }}
                 >
-                  <Text style={[styles.modalButtonText, { color: c.text }]}>
-                    {revivePending ? pendingLabel : reviveLabel}
-                  </Text>
-                </Pressable>
+                  {(inv) => (
+                    <Text style={[styles.modalButtonText, { color: inv ? c.bg : c.text }]}>
+                      {revivePending ? pendingLabel : reviveLabel}
+                    </Text>
+                  )}
+                </FlickerButton>
               ) : null}
               {petLifeState === "dead" ? (
-                <Pressable
-                  style={[
-                    styles.modalButton,
-                    { borderColor: c.divider },
-                    (revivePending || acceptDeathPending) && styles.actionButtonDisabled,
-                  ]}
+                <FlickerButton
+                  style={[styles.modalButton, { borderColor: c.divider }, (revivePending || acceptDeathPending) && styles.actionButtonDisabled]}
                   disabled={revivePending || acceptDeathPending}
                   onPress={() => {
                     onAcceptDeath().then(handleCloseDangerModal).catch(() => undefined);
                   }}
                 >
-                  <Text style={[styles.modalButtonText, { color: c.text }]}>
-                    {acceptDeathPending ? pendingLabel : restartLabel}
-                  </Text>
-                </Pressable>
+                  {(inv) => (
+                    <Text style={[styles.modalButtonText, { color: inv ? c.bg : c.text }]}>
+                      {acceptDeathPending ? pendingLabel : restartLabel}
+                    </Text>
+                  )}
+                </FlickerButton>
               ) : null}
               {petLifeState !== "dead" ? (
-                <Pressable style={[styles.modalButtonSingle, { borderColor: c.divider }]} onPress={handleCloseDangerModal}>
-                  <Text style={[styles.modalButtonText, { color: c.text }]}>{closeLabel}</Text>
-                </Pressable>
+                <FlickerButton style={[styles.modalButtonSingle, { borderColor: c.divider }]} onPress={handleCloseDangerModal}>
+                  {(inv) => (
+                    <Text style={[styles.modalButtonText, { color: inv ? c.bg : c.text }]}>{closeLabel}</Text>
+                  )}
+                </FlickerButton>
               ) : null}
             </View>
           </Pressable>
@@ -701,15 +936,14 @@ function HomeTab({
       <View style={[styles.divider, { backgroundColor: c.divider }]} />
       <View style={styles.actionRow}>
         {careActions.map(({ key, icon, label }) => {
-          const anyCooldown = Object.values(cooldowns).some(Boolean);
-          const onCooldown = Boolean(cooldowns[key]);
-          const disabled = !hasPet || anyCooldown || carePending || petLifeState === "dead";
+          const isActiveTask = activeCareTask?.action === key && activeCareTask.status === "running";
+          const disabled = !hasPet || Boolean(activeCareTask) || carePending || petLifeState === "dead";
           return (
             <View key={key} style={styles.actionButtonWrap}>
               <Pressable
                 style={[styles.actionButton, { borderColor: c.divider }, disabled && styles.actionButtonDisabled]}
                 disabled={disabled}
-                onPress={() => { onCare(key); startCooldown(key); }}
+                onPress={() => onStartCare(key)}
               >
                 {({ pressed }) => (
                   <View style={styles.actionInner}>
@@ -720,7 +954,11 @@ function HomeTab({
                   </View>
                 )}
               </Pressable>
-              <CooldownOverlay key={cooldowns[key] || 0} active={onCooldown} duration={COOLDOWN_MS} />
+              <CooldownOverlay
+                key={isActiveTask ? activeCareTask.startedAt : `care-idle-${key}`}
+                active={isActiveTask}
+                duration={isActiveTask ? activeCareTask.durationMs : 0}
+              />
             </View>
           );
         })}
@@ -759,6 +997,7 @@ function DotExpBar({ value, maxValue }: { value: number; maxValue: number }) {
 function StatBar({ label, value }: { label: string; value: number }) {
   const { c } = useTheme();
   const clamped = Math.max(0, Math.min(100, value));
+  const displayValue = Math.round(clamped);
   const isLow = clamped < STAT_THRESHOLD;
   const fillColor = isLow ? c.accent : c.barFill;
   const labelColor = isLow ? c.accent : c.gray;
@@ -769,7 +1008,7 @@ function StatBar({ label, value }: { label: string; value: number }) {
       <View style={[styles.statTrack, { backgroundColor: c.barTrack }]}>
         <View style={[styles.statFill, { width: `${clamped}%`, backgroundColor: fillColor }]} />
       </View>
-      <Text style={[styles.statValue, { color: isLow ? c.accent : c.text }]}>{clamped}</Text>
+      <Text style={[styles.statValue, { color: isLow ? c.accent : c.text }]}>{displayValue}</Text>
     </View>
   );
 }
@@ -1018,32 +1257,40 @@ function BattleTab({
             <Text style={[bStyles.resultText, { color: isWinner ? c.text : c.accent }]}>
               {isWinner ? t.battle.victory : t.battle.defeat}
             </Text>
-            <Pressable style={[styles.enterButton, { borderColor: c.divider }]} onPress={handleBackToLobby}>
-              <Text style={[styles.battleBtnText, { color: c.text }]}>{t.battle.backToLobby}</Text>
-            </Pressable>
+            <FlickerButton style={[styles.enterButton, { borderColor: c.divider }]} onPress={handleBackToLobby}>
+              {(inv) => (
+                <Text style={[styles.battleBtnText, { color: inv ? c.bg : c.text }]}>{t.battle.backToLobby}</Text>
+              )}
+            </FlickerButton>
           </View>
         ) : (
           <View style={bStyles.actionArea}>
             <Pressable
-              style={[bStyles.actionBtn, { borderColor: c.divider }]}
+              style={({ pressed }) => [bStyles.actionBtn, { borderColor: c.divider }, pressed && { backgroundColor: c.text }]}
               disabled={actionPending}
               onPress={() => handleAction("attack")}
             >
-              <Text style={[bStyles.actionBtnText, { color: c.text }]}>{t.battle.attack}</Text>
+              {({ pressed }) => (
+                <Text style={[bStyles.actionBtnText, { color: pressed ? c.bg : c.text }]}>{t.battle.attack}</Text>
+              )}
             </Pressable>
             <Pressable
-              style={[bStyles.actionBtn, { borderColor: c.divider }]}
+              style={({ pressed }) => [bStyles.actionBtn, { borderColor: c.divider }, pressed && { backgroundColor: c.text }]}
               disabled={actionPending}
               onPress={() => handleAction("skill")}
             >
-              <Text style={[bStyles.actionBtnText, { color: c.text }]}>{t.battle.skill}</Text>
+              {({ pressed }) => (
+                <Text style={[bStyles.actionBtnText, { color: pressed ? c.bg : c.text }]}>{t.battle.skill}</Text>
+              )}
             </Pressable>
             <Pressable
-              style={[bStyles.actionBtn, { borderColor: c.divider }]}
+              style={({ pressed }) => [bStyles.actionBtn, { borderColor: c.divider }, pressed && { backgroundColor: c.text }]}
               disabled={actionPending}
               onPress={() => handleAction("guard")}
             >
-              <Text style={[bStyles.actionBtnText, { color: c.text }]}>{t.battle.guard}</Text>
+              {({ pressed }) => (
+                <Text style={[bStyles.actionBtnText, { color: pressed ? c.bg : c.text }]}>{t.battle.guard}</Text>
+              )}
             </Pressable>
           </View>
         )}
@@ -1079,19 +1326,17 @@ function BattleTab({
         <Text style={[styles.battleTitle, { color: c.text }]}>{t.battle.title}</Text>
         <Text style={[styles.battleBody, { color: c.text }]}>{t.battle.currentFighter(fighterLabel)}</Text>
         <Text style={[styles.battleMuted, { color: c.gray }]}>{t.battle.rule}</Text>
-        <Pressable
-          style={[
-            styles.enterButton,
-            { borderColor: c.divider },
-            (!petTemplateName || battleLocked) && styles.actionButtonDisabled,
-          ]}
+        <FlickerButton
+          style={[styles.enterButton, { borderColor: c.divider }, (!petTemplateName || battleLocked) && styles.actionButtonDisabled]}
           disabled={!petTemplateName || battleLocked}
           onPress={onQueue}
         >
-          <Text style={[styles.battleBtnText, { color: c.text }]}>
-            {queuePending ? t.battle.matching : t.battle.enterQueue}
-          </Text>
-        </Pressable>
+          {(inv) => (
+            <Text style={[styles.battleBtnText, { color: inv ? c.bg : c.text }]}>
+              {queuePending ? t.battle.matching : t.battle.enterQueue}
+            </Text>
+          )}
+        </FlickerButton>
         {queueResult && !queueResult.matched ? (
           <Text style={[styles.battleBody, { color: c.text }]}>
             {t.battle.waiting}
@@ -1209,19 +1454,27 @@ function CollectionTab({
 function ProfileTab({
   onLanguageChange,
   onLogout,
+  onTogglePremiumDev,
   apiSummary,
   userName,
   provider,
   premiumStatus,
+  premiumDevEnabled,
+  premiumTogglePending,
+  premiumErrorMessage,
   sessionState,
   saveState,
 }: {
   onLanguageChange: (language: AppLanguage) => void;
   onLogout: () => void;
+  onTogglePremiumDev: (enabled: boolean) => Promise<unknown>;
   apiSummary: string;
   userName?: string;
   provider?: string;
   premiumStatus?: string;
+  premiumDevEnabled: boolean;
+  premiumTogglePending: boolean;
+  premiumErrorMessage?: string;
   sessionState: ProfileSessionState;
   saveState: ProfileSaveState;
 }) {
@@ -1229,14 +1482,16 @@ function ProfileTab({
   const { language } = useSessionStore();
   const t = getCopy(language);
   const premiumModeLabel = language === "ko" ? "프리미엄 모드" : "PREMIUM MODE";
-  const premiumModeValue = premiumStatus === "premium" ? "DEV ON" : "DEV OFF";
+  const premiumToggleDisabledLabel = language === "ko"
+    ? "서버에서 개발용 프리미엄 토글이 꺼져 있습니다."
+    : "The server-side premium dev toggle is disabled.";
   const premiumTitle = language === "ko" ? "프리미엄 프로토타입" : "Premium Prototype";
   const premiumBody1 = language === "ko"
     ? "이 빌드에는 실제 프리미엄 판매나 결제 연결이 없습니다."
     : "This build does not sell premium access or connect to app-store billing.";
   const premiumBody2 = language === "ko"
-    ? "내부 테스트에서는 서버의 개발용 토글로만 프리미엄 상태를 잠시 켤 수 있습니다."
-    : "Internal testing can only unlock premium through the server-side dev toggle.";
+    ? "테스트 단계에서는 설정 탭에서 바로 프리미엄 개발 모드를 켜고 끌 수 있습니다."
+    : "During testing, premium dev mode can be toggled directly from this settings screen.";
   const premiumBody3 = language === "ko"
     ? "영수증 검증과 실제 구매 흐름은 나중에 따로 붙일 예정입니다."
     : "Receipt verification and real purchase flow are postponed until later.";
@@ -1246,7 +1501,18 @@ function ProfileTab({
       <View style={styles.profileInfo}>
         <ProfileRow label={t.profile.name} value={userName ?? t.profile.defaultName} />
         <ProfileRow label={t.profile.login} value={(provider ?? "demo").toUpperCase()} />
-        <ProfileRow label={premiumModeLabel} value={premiumModeValue} />
+        <ProfileRow
+          label={premiumModeLabel}
+          right={(
+            <ProfileSwitch
+              value={premiumStatus === "premium"}
+              disabled={!premiumDevEnabled || premiumTogglePending}
+              onToggle={() => {
+                onTogglePremiumDev(premiumStatus !== "premium").catch(() => undefined);
+              }}
+            />
+          )}
+        />
         <ProfileRow
           label={t.profile.sessionStateLabel}
           value={sessionState === "active" ? t.profile.sessionActive : t.profile.sessionInactive}
@@ -1263,7 +1529,9 @@ function ProfileTab({
       <Text style={[styles.profileBody, { color: c.gray }]}>{apiSummary}</Text>
       <View style={styles.langRow}>
         <Pressable onPress={onLogout}>
-          <Text style={[styles.profileOption, { color: c.text }]}>{t.profile.logout}</Text>
+          {({ pressed }) => (
+            <Text style={[styles.profileOption, { color: c.text }, pressed && styles.profileOptionPressed]}>{t.profile.logout}</Text>
+          )}
         </Pressable>
       </View>
 
@@ -1273,11 +1541,13 @@ function ProfileTab({
       </Text>
       <View style={styles.langRow}>
         <Pressable onPress={toggle}>
-          <Text style={[styles.profileOption, { color: c.text }]}>
-            {mode === "dark"
-              ? (language === "ko" ? "라이트 모드로 전환" : "switch to light")
-              : (language === "ko" ? "다크 모드로 전환" : "switch to dark")}
-          </Text>
+          {({ pressed }) => (
+            <Text style={[styles.profileOption, { color: c.text }, pressed && styles.profileOptionPressed]}>
+              {mode === "dark"
+                ? (language === "ko" ? "라이트 모드로 전환" : "switch to light")
+                : (language === "ko" ? "다크 모드로 전환" : "switch to dark")}
+            </Text>
+          )}
         </Pressable>
       </View>
 
@@ -1286,14 +1556,18 @@ function ProfileTab({
       <Text style={[styles.profileBody, { color: c.gray }]}>{t.profile.settingsBody}</Text>
       <View style={styles.langRow}>
         <Pressable onPress={() => onLanguageChange("ko")}>
-          <Text style={[styles.profileOption, { color: language === "ko" ? c.text : c.grayDark }]}>
-            {t.profile.korean}
-          </Text>
+          {({ pressed }) => (
+            <Text style={[styles.profileOption, { color: language === "ko" ? c.text : c.grayDark }, pressed && styles.profileOptionPressed]}>
+              {t.profile.korean}
+            </Text>
+          )}
         </Pressable>
         <Pressable onPress={() => onLanguageChange("en")}>
-          <Text style={[styles.profileOption, { color: language === "en" ? c.text : c.grayDark }]}>
-            {t.profile.english}
-          </Text>
+          {({ pressed }) => (
+            <Text style={[styles.profileOption, { color: language === "en" ? c.text : c.grayDark }, pressed && styles.profileOptionPressed]}>
+              {t.profile.english}
+            </Text>
+          )}
         </Pressable>
       </View>
 
@@ -1302,17 +1576,102 @@ function ProfileTab({
       <Text style={[styles.profileBody, { color: c.gray }]}>{premiumBody1}</Text>
       <Text style={[styles.profileBody, { color: c.gray }]}>{premiumBody2}</Text>
       <Text style={[styles.profileBody, { color: c.gray }]}>{premiumBody3}</Text>
+      {!premiumDevEnabled ? (
+        <Text style={[styles.profileBody, { color: c.gray }]}>{premiumToggleDisabledLabel}</Text>
+      ) : null}
+      {premiumErrorMessage ? (
+        <Text style={[styles.errorText, { color: c.accent }]}>{premiumErrorMessage}</Text>
+      ) : null}
     </>
   );
 }
 
-function ProfileRow({ label, value }: { label: string; value: string }) {
+function ProfileRow({
+  label,
+  value,
+  right,
+}: {
+  label: string;
+  value?: string;
+  right?: React.ReactNode;
+}) {
   const { c } = useTheme();
   return (
     <View style={[styles.profileRow, { borderBottomColor: c.divider }]}>
       <Text style={[styles.profileLabel, { color: c.gray }]}>{label}</Text>
-      <Text style={[styles.profileValue, { color: c.text }]}>{value}</Text>
+      {right ?? <Text style={[styles.profileValue, { color: c.text }]}>{value}</Text>}
     </View>
+  );
+}
+
+function ProfileSwitch({
+  value,
+  disabled,
+  onToggle,
+}: {
+  value: boolean;
+  disabled?: boolean;
+  onToggle: () => void;
+}) {
+  const { c } = useTheme();
+  const progress = useRef(new Animated.Value(value ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.spring(progress, {
+      toValue: value ? 1 : 0,
+      stiffness: 240,
+      damping: 18,
+      mass: 0.9,
+      overshootClamping: false,
+      useNativeDriver: false,
+    }).start();
+  }, [progress, value]);
+
+  const trackBackgroundColor = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [c.barTrack, c.text],
+  });
+  const thumbTranslateX = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 22],
+  });
+  const thumbScale = progress.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [1, 0.92, 1],
+  });
+
+  return (
+    <Pressable
+      accessibilityRole="switch"
+      accessibilityState={{ checked: value, disabled: Boolean(disabled) }}
+      onPress={onToggle}
+      disabled={disabled}
+      style={({ pressed }) => [
+        styles.profileSwitch,
+        { borderColor: c.divider },
+        disabled && styles.actionButtonDisabled,
+        pressed && !disabled && styles.profileSwitchPressed,
+      ]}
+    >
+      <Animated.View
+        style={[
+          styles.profileSwitchTrack,
+          {
+            backgroundColor: trackBackgroundColor,
+          },
+        ]}
+      >
+        <Animated.View
+          style={[
+            styles.profileSwitchThumb,
+            {
+              backgroundColor: value ? c.bg : c.text,
+              transform: [{ translateX: thumbTranslateX }, { scaleX: thumbScale }],
+            },
+          ]}
+        />
+      </Animated.View>
+    </Pressable>
   );
 }
 
@@ -1419,8 +1778,12 @@ const styles = StyleSheet.create({
   traitStatLabel: { fontSize: 10, fontFamily: FONT, letterSpacing: 1 },
   traitStatValue: { fontSize: 16, fontFamily: FONT_BOLD },
   traitName: { fontSize: 14, fontFamily: FONT_BOLD },
-  traitSummary: { fontSize: 10, fontFamily: FONT, lineHeight: 18 },
-  traitBattleEffect: { fontSize: 10, fontFamily: FONT_BOLD, lineHeight: 18 },
+  traitModalTitle: { fontSize: 14, fontFamily: FONT_BOLD, letterSpacing: 1, textAlign: "center" },
+  traitModalSubtitle: { fontSize: 12, fontFamily: FONT, textAlign: "center", lineHeight: 18 },
+  traitSummary: { fontSize: 12, fontFamily: FONT, lineHeight: 18 },
+  traitBattleEffect: { fontSize: 12, fontFamily: FONT_BOLD, lineHeight: 18 },
+  traitStoryBox: { borderWidth: 2, paddingVertical: 14, paddingHorizontal: 12 },
+  traitStory: { fontSize: 11, fontFamily: FONT, lineHeight: 18 },
   dangerActions: { flexDirection: "row", gap: 12 },
   actionTextGray: { fontSize: 10, fontFamily: FONT, textTransform: "lowercase" },
   actionTextWhite: { fontSize: 10, fontFamily: FONT, textTransform: "lowercase" },
@@ -1468,12 +1831,31 @@ const styles = StyleSheet.create({
   profileSectionLabel: { fontSize: 14, fontFamily: FONT, letterSpacing: 2, textTransform: "lowercase" },
   profileBody: { fontSize: 13, fontFamily: FONT, lineHeight: 24 },
   profileInfo: { gap: 8 },
-  profileRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 6, borderBottomWidth: 2 },
+  profileRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 6, borderBottomWidth: 2 },
   profileLabel: { fontSize: 14, fontFamily: FONT, textTransform: "lowercase" },
   profileValue: { fontSize: 14, fontFamily: FONT },
+  profileSwitch: {
+    width: 52,
+    height: 28,
+    borderWidth: 2,
+    borderRadius: 999,
+    padding: 2,
+  },
+  profileSwitchTrack: {
+    flex: 1,
+    borderRadius: 999,
+    justifyContent: "center",
+  },
+  profileSwitchPressed: { transform: [{ scale: 0.98 }] },
+  profileSwitchThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: 999,
+  },
   langRow: { flexDirection: "row", gap: 24 },
   langOption: { fontSize: 12, fontFamily: FONT, paddingVertical: 6 },
   profileOption: { fontSize: 14, fontFamily: FONT, paddingVertical: 6 },
+  profileOptionPressed: { textDecorationLine: "underline" as const },
 
   tabDock: { position: "absolute", left: 0, right: 0, bottom: 0, flexDirection: "row", borderTopWidth: 2 },
   tabButton: { flex: 1, alignItems: "center", paddingVertical: 20 },

@@ -8,11 +8,13 @@ import {
   getApiEndpointSummary,
   getFriendlyApiErrorMessage,
   getMyPet,
+  getPremiumStatus,
   performCare,
   queueBattleDev,
   revivePet,
   rollInitialPet,
   signInDemo,
+  togglePremiumDev,
 } from "./api";
 import {
   clearStoredSession,
@@ -21,7 +23,7 @@ import {
   persistStoredSession,
   readStoredSession,
 } from "./auth";
-import { useSessionStore } from "./store";
+import { AppLanguage, useSessionStore } from "./store";
 
 const LANGUAGE_KEY = "pixelpet.language";
 const SPLASH_MS = 1200;
@@ -37,10 +39,22 @@ function isUnauthorizedError(error: unknown) {
   return error instanceof ApiError && error.status === 401;
 }
 
+function getPremiumErrorMessage(error: unknown, language: AppLanguage) {
+  if (error instanceof ApiError && error.status === 403) {
+    return language === "ko"
+      ? "개발용 프리미엄 토글이 서버에서 꺼져 있습니다. PIXELPET_PREMIUM_DEV=true 로 서버를 실행해야 합니다."
+      : "Premium dev toggle is disabled on the server. Restart the server with PIXELPET_PREMIUM_DEV=true.";
+  }
+
+  return getFriendlyApiErrorMessage(error, language);
+}
+
 export function useAppShellState() {
   const [tab, setTab] = useState<TabKey>("home");
   const [startupPhase, setStartupPhase] = useState<StartupPhase>("splash");
   const [authError, setAuthError] = useState<unknown>(null);
+  const [premiumDevEnabled, setPremiumDevEnabled] = useState(false);
+  const [premiumError, setPremiumError] = useState<unknown>(null);
   const { user, token, pet, language, setSession, setPet, setLanguage, clearSession } =
     useSessionStore();
 
@@ -122,6 +136,41 @@ export function useAppShellState() {
     };
   }, [clearSession, setPet, setSession, startupPhase]);
 
+  useEffect(() => {
+    if (!token) {
+      setPremiumDevEnabled(false);
+      setPremiumError(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    getPremiumStatus(token)
+      .then(async (status) => {
+        if (cancelled) return;
+        setPremiumDevEnabled(status.devModeEnabled);
+        setPremiumError(null);
+
+        if (user && user.premiumStatus !== status.premiumStatus) {
+          const updatedUser = {
+            ...user,
+            premiumStatus: status.premiumStatus,
+          };
+          setSession(updatedUser, token);
+          await persistStoredSession(updatedUser, token);
+        }
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setPremiumDevEnabled(false);
+        setPremiumError(error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [setSession, token, user]);
+
   const loginMutation = useMutation({
     mutationFn: async () => {
       const installId = await getOrCreateInstallId();
@@ -190,6 +239,26 @@ export function useAppShellState() {
     },
   });
 
+  const premiumToggleMutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      if (!token || !user) {
+        throw new Error("No session");
+      }
+
+      const result = await togglePremiumDev(token, enabled);
+      await persistStoredSession(result.user, token);
+      setSession(result.user, token);
+      setPremiumDevEnabled(result.devModeEnabled);
+      return result;
+    },
+    onMutate: () => {
+      setPremiumError(null);
+    },
+    onError: (error) => {
+      setPremiumError(error);
+    },
+  });
+
   const handleRefreshPet = useCallback(async () => {
     if (!token) {
       setPet(undefined);
@@ -203,12 +272,15 @@ export function useAppShellState() {
 
   const handleLogout = useCallback(() => {
     setAuthError(null);
+    setPremiumError(null);
+    setPremiumDevEnabled(false);
     loginMutation.reset();
     firstPetMutation.reset();
     careMutation.reset();
     reviveMutation.reset();
     acceptDeathMutation.reset();
     queueMutation.reset();
+    premiumToggleMutation.reset();
     clearStoredSession().catch(() => undefined);
     clearSession();
     setTab("home");
@@ -219,6 +291,7 @@ export function useAppShellState() {
     clearSession,
     firstPetMutation,
     loginMutation,
+    premiumToggleMutation,
     queueMutation,
     reviveMutation,
   ]);
@@ -267,11 +340,15 @@ export function useAppShellState() {
     queuePending: queueMutation.isPending,
     queueResult: queueMutation.data,
     apiSummary: getApiEndpointSummary(language),
+    premiumDevEnabled,
+    premiumTogglePending: premiumToggleMutation.isPending,
+    premiumErrorMessage: premiumError ? getPremiumErrorMessage(premiumError, language) : undefined,
     handleLogin: () => loginMutation.mutate(),
     handleLogout,
     handleRefreshPet,
     handleGetFirstPet: (nickname?: string) => firstPetMutation.mutateAsync(nickname),
-    handleCare: (action: "feed" | "clean" | "play" | "rest") => careMutation.mutate(action),
+    handleCare: (action: "feed" | "clean" | "play" | "rest") => careMutation.mutateAsync(action),
+    handleTogglePremiumDev: (enabled: boolean) => premiumToggleMutation.mutateAsync(enabled),
     handleRevivePet: () => reviveMutation.mutateAsync(),
     handleAcceptDeath: () => acceptDeathMutation.mutateAsync(),
     handleQueue: () => queueMutation.mutate(),

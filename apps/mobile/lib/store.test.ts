@@ -16,7 +16,7 @@ const demoPet: PetInstance = {
   templateId: "fire-1",
   nickname: "Nova",
   level: 1,
-  experience: 35,
+  experience: 0,
   lifeState: "alive",
   careState: {
     hunger: 60,

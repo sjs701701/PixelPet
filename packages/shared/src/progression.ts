@@ -1,9 +1,9 @@
 import { applyNeglectDecay } from "./care";
 import { CareState, PetInstance, PetLifeState } from "./types";
 
-export const PROGRESSION_TICK_HOURS = 4;
+export const PROGRESSION_TICK_HOURS = 2;
 export const PROGRESSION_TICK_MS = PROGRESSION_TICK_HOURS * 60 * 60 * 1000;
-export const PASSIVE_XP_PER_GOOD_TICK = 10;
+export const PASSIVE_XP_PER_GOOD_TICK = 5;
 export const GOOD_AVERAGE_THRESHOLD = 75;
 export const CRITICAL_CORE_VALUE_THRESHOLD = 10;
 export const CRITICAL_CORE_AVERAGE_THRESHOLD = 40;

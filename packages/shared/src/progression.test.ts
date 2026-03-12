@@ -15,7 +15,7 @@ function createPet(overrides: Partial<PetInstance> = {}): PetInstance {
     ownerId: "user-1",
     templateId: "fire-1",
     level: 1,
-    experience: 35,
+    experience: 0,
     lifeState: "alive",
     careState: {
       hunger: 82,
@@ -38,17 +38,17 @@ describe("pet progression", () => {
     const pet = createPet({
       lifeState: "good",
       careState: {
-        hunger: 80,
-        mood: 80,
-        hygiene: 80,
-        energy: 80,
-        bond: 80,
+        hunger: 90,
+        mood: 90,
+        hygiene: 90,
+        energy: 90,
+        bond: 90,
       },
     });
 
     const progressed = simulatePetProgress(pet, "2026-03-10T04:00:00.000Z");
 
-    expect(progressed.experience).toBe(45);
+    expect(progressed.experience).toBe(10);
     expect(progressed.lifeState).toBe("good");
   });
 
@@ -57,7 +57,7 @@ describe("pet progression", () => {
 
     const progressed = simulatePetProgress(pet, "2026-03-10T04:00:00.000Z");
 
-    expect(progressed.experience).toBe(35);
+    expect(progressed.experience).toBe(0);
     expect(progressed.lifeState).toBe("alive");
   });
 

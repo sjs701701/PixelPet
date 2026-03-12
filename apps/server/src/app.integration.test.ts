@@ -127,6 +127,7 @@ describe("server integration", () => {
 
       expect(createdPet.response.status).toBe(201);
       expect(createdPet.body?.nickname).toBe("Nova");
+      expect(createdPet.body?.experience).toBe(0);
 
       await stopTestServer(app);
       app = undefined;

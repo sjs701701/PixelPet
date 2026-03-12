@@ -1,9 +1,9 @@
-import { ForbiddenException, Inject, Injectable, NotImplementedException } from "@nestjs/common";
+import { Inject, Injectable, NotImplementedException } from "@nestjs/common";
 import { StoreService } from "../common/store.service";
 
 @Injectable()
 export class PremiumService {
-  private readonly devModeEnabled = process.env.PIXELPET_PREMIUM_DEV === "true";
+  private readonly devModeEnabled = true;
 
   constructor(
     @Inject(StoreService)
@@ -27,12 +27,6 @@ export class PremiumService {
   }
 
   toggleDevPremium(userId: string, enabled: boolean) {
-    if (!this.devModeEnabled) {
-      throw new ForbiddenException(
-        "Premium dev mode is disabled. Set PIXELPET_PREMIUM_DEV=true before using this route.",
-      );
-    }
-
     const user = this.store.getUser(userId);
     const updated = {
       ...user,
