@@ -41,7 +41,7 @@ export const ELEMENT_ADVANTAGES: ElementAdvantage[] = (
 
 export const ELEMENT_MULTIPLIERS: Record<AdvantageTier, number> = {
   strong: 1.2,
-  weak: 1.1,
+  weak: 0.9,
   neutral: 1,
 };
 

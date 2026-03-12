@@ -64,7 +64,7 @@ export class StoreService {
     return Array.from(this.pets.values()).find((pet) => pet.ownerId === userId);
   }
 
-  rollInitialPet(userId: string, nickname?: string) {
+  rollInitialPet(userId: string, nickname?: string, primaryDeviceId?: string) {
     const existing = this.getUserPet(userId);
     if (existing) {
       return existing;
@@ -78,7 +78,7 @@ export class StoreService {
       ownerId: userId,
       templateId: template.id,
       nickname: safeNickname,
-      level: 1,
+      level: 0,
       experience: 0,
       lifeState: "alive",
       careState: { ...DEFAULT_CARE_STATE },
@@ -86,6 +86,9 @@ export class StoreService {
       cosmeticLoadout: {},
       lastSimulatedAt: createdAt,
       freeRevivesRemaining: DEFAULT_FREE_REVIVES,
+      revision: 0,
+      primaryDeviceId,
+      lastServerSyncAt: createdAt,
       createdAt,
     };
     this.pets.set(pet.id, pet);

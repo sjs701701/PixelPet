@@ -8,8 +8,27 @@ export type PremiumStatus = "free" | "premium";
 
 export type BattleAction = "attack" | "guard" | "skill";
 export type CareAction = "feed" | "clean" | "play" | "rest";
+export type TimeIntegrityState = "ok" | "tampered";
 
 export type PetLifeState = "good" | "alive" | "critical" | "dead";
+export type PetEvolutionStage = 0 | 1 | 2 | 3;
+export type PetGrowthCurveId = "sprinter" | "steady" | "surge" | "late-bloomer";
+export type SkillProfileId =
+  | "fire-stage1"
+  | "fire-stage2"
+  | "fire-stage3"
+  | "water-stage1"
+  | "water-stage2"
+  | "water-stage3"
+  | "grass-stage1"
+  | "grass-stage2"
+  | "grass-stage3"
+  | "electric-stage1"
+  | "electric-stage2"
+  | "electric-stage3"
+  | "digital-stage1"
+  | "digital-stage2"
+  | "digital-stage3";
 
 export type PetTraitId =
   | "assault"
@@ -30,6 +49,12 @@ export interface BaseStats {
   attack: number;
   defense: number;
   speed: number;
+}
+
+export interface SpriteSet {
+  idle: string;
+  attack: string;
+  care: string;
 }
 
 export interface PetTrait {
@@ -58,6 +83,11 @@ export interface InventoryLoadout {
   charmItemId?: string;
 }
 
+export interface PetFormStage {
+  spriteSet: SpriteSet;
+  skillProfileId: SkillProfileId;
+}
+
 export interface PetTemplate {
   id: string;
   name: string;
@@ -65,11 +95,13 @@ export interface PetTemplate {
   motif: string;
   rarity: "common" | "rare" | "epic";
   traitId: PetTraitId;
+  growthCurveId: PetGrowthCurveId;
   baseStats: BaseStats;
-  spriteSet: {
-    idle: string;
-    attack: string;
-    care: string;
+  spriteSet: SpriteSet;
+  formStages: {
+    stage1: PetFormStage;
+    stage2: PetFormStage;
+    stage3: PetFormStage;
   };
   flavorText: string;
 }
@@ -89,7 +121,20 @@ export interface PetInstance {
   criticalSince?: string;
   diedAt?: string;
   freeRevivesRemaining: number;
+  revision: number;
+  primaryDeviceId?: string;
+  lastServerSyncAt?: string;
   createdAt: string;
+}
+
+export interface PendingCareActionRecord {
+  id: string;
+  action: CareAction;
+  startedAt: string;
+  completedAt: string;
+  durationMs: number;
+  revisionBase: number;
+  deviceId: string;
 }
 
 export interface User {
@@ -117,6 +162,9 @@ export interface BattleFighterSnapshot {
   name: string;
   element: ElementType;
   level: number;
+  lifeState: PetLifeState;
+  evolutionStage: PetEvolutionStage;
+  growthCurveId: PetGrowthCurveId;
   hp: number;
   maxHp: number;
   attack: number;
@@ -124,6 +172,8 @@ export interface BattleFighterSnapshot {
   speed: number;
   guarding: boolean;
   traitId: PetTraitId;
+  skillName: string;
+  skillPower: number;
   premiumStatus: PremiumStatus;
 }
 
@@ -132,8 +182,9 @@ export interface BattleTurnLog {
   actorUserId: string;
   action: BattleAction;
   damage: number;
+  missed: boolean;
+  missChance: number;
   advantageTier: AdvantageTier;
-  randomFactor: number;
   remainingHp: number;
 }
 

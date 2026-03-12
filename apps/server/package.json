@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "tsx watch src/main.ts",
     "build": "tsc -p tsconfig.json",
-    "test": "vitest run src/app.integration.test.ts"
+    "test": "npm run build --workspace @pixel-pet-arena/shared && vitest run src/app.integration.test.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.6",

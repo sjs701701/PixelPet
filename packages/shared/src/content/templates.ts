@@ -1,3 +1,5 @@
+import { getSkillProfileId } from "../forms";
+import { getGrowthCurveIdForStatBias } from "../progression";
 import { getTraitIdForStatBias } from "../traits";
 import { BaseStats, ElementType, PetTemplate } from "../types";
 
@@ -104,6 +106,8 @@ function buildTemplate(
     speed: base.speed + (seed.statBias.speed ?? 0),
   };
 
+  const slug = seed.name.toLowerCase();
+
   return {
     id: `${element}-${index + 1}`,
     name: seed.name,
@@ -111,11 +115,38 @@ function buildTemplate(
     motif: seed.motif,
     rarity: seed.rarity,
     traitId: getTraitIdForStatBias(seed.statBias),
+    growthCurveId: getGrowthCurveIdForStatBias(seed.statBias),
     baseStats: stats,
     spriteSet: {
-      idle: `/sprites/${element}/${seed.name.toLowerCase()}-idle.png`,
-      attack: `/sprites/${element}/${seed.name.toLowerCase()}-attack.png`,
-      care: `/sprites/${element}/${seed.name.toLowerCase()}-care.png`,
+      idle: `/sprites/${element}/${slug}/stage-1/idle.png`,
+      attack: `/sprites/${element}/${slug}/stage-1/attack.png`,
+      care: `/sprites/${element}/${slug}/stage-1/care.png`,
+    },
+    formStages: {
+      stage1: {
+        spriteSet: {
+          idle: `/sprites/${element}/${slug}/stage-1/idle.png`,
+          attack: `/sprites/${element}/${slug}/stage-1/attack.png`,
+          care: `/sprites/${element}/${slug}/stage-1/care.png`,
+        },
+        skillProfileId: getSkillProfileId(element, 1),
+      },
+      stage2: {
+        spriteSet: {
+          idle: `/sprites/${element}/${slug}/stage-2/idle.png`,
+          attack: `/sprites/${element}/${slug}/stage-2/attack.png`,
+          care: `/sprites/${element}/${slug}/stage-2/care.png`,
+        },
+        skillProfileId: getSkillProfileId(element, 2),
+      },
+      stage3: {
+        spriteSet: {
+          idle: `/sprites/${element}/${slug}/stage-3/idle.png`,
+          attack: `/sprites/${element}/${slug}/stage-3/attack.png`,
+          care: `/sprites/${element}/${slug}/stage-3/care.png`,
+        },
+        skillProfileId: getSkillProfileId(element, 3),
+      },
     },
     flavorText: `${seed.name} is a ${seed.motif} born from ${element} energy and raised for playful arena duels.`,
   };

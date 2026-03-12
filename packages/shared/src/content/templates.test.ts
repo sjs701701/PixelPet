@@ -5,6 +5,9 @@ describe("pet templates", () => {
   it("contains 60 templates with 12 per element", () => {
     expect(PET_TEMPLATES).toHaveLength(60);
     expect(PET_TEMPLATES.every((template) => typeof template.traitId === "string")).toBe(true);
+    expect(PET_TEMPLATES.every((template) => typeof template.growthCurveId === "string")).toBe(true);
+    expect(PET_TEMPLATES.every((template) => typeof template.formStages.stage1.skillProfileId === "string")).toBe(true);
+    expect(PET_TEMPLATES.every((template) => typeof template.formStages.stage2.spriteSet.idle === "string")).toBe(true);
 
     const grouped = PET_TEMPLATES.reduce<Record<string, number>>((acc, template) => {
       acc[template.element] = (acc[template.element] ?? 0) + 1;

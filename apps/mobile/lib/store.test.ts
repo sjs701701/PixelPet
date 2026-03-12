@@ -15,7 +15,7 @@ const demoPet: PetInstance = {
   ownerId: "user-install-alpha",
   templateId: "fire-1",
   nickname: "Nova",
-  level: 1,
+  level: 0,
   experience: 0,
   lifeState: "alive",
   careState: {
@@ -29,6 +29,8 @@ const demoPet: PetInstance = {
   cosmeticLoadout: {},
   lastSimulatedAt: "2026-03-11T00:00:00.000Z",
   freeRevivesRemaining: 3,
+  revision: 0,
+  lastServerSyncAt: "2026-03-11T00:00:00.000Z",
   createdAt: "2026-03-11T00:00:00.000Z",
 };
 

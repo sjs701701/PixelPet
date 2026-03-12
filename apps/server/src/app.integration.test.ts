@@ -26,6 +26,9 @@ type PetResponse = {
   experience: number;
   lifeState: string;
   freeRevivesRemaining: number;
+  revision: number;
+  primaryDeviceId?: string;
+  lastServerSyncAt?: string;
   criticalSince?: string;
   diedAt?: string;
   careState: {
@@ -43,7 +46,7 @@ async function startTestServer(storeFile: string) {
   process.env.PIXELPET_STORE_FILE = storeFile;
   cleanupPaths.add(path.dirname(storeFile));
 
-  const app = await NestFactory.create(AppModule, { logger: false });
+  const app = await NestFactory.create(AppModule, { logger: false, abortOnError: false });
   await app.listen(0);
 
   const address = app.getHttpServer().address() as AddressInfo;
@@ -127,6 +130,7 @@ describe("server integration", () => {
 
       expect(createdPet.response.status).toBe(201);
       expect(createdPet.body?.nickname).toBe("Nova");
+      expect(createdPet.body?.level).toBe(0);
       expect(createdPet.body?.experience).toBe(0);
 
       await stopTestServer(app);
@@ -214,6 +218,152 @@ describe("server integration", () => {
 
       expect(response.response.status).toBe(401);
       expect(response.body?.message).toBe("Invalid session");
+    } finally {
+      await stopTestServer(app);
+    }
+  });
+
+  it("syncs a local pet snapshot back to the server", async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pixelpet-server-"));
+    const storeFile = path.join(tempDir, "store.json");
+
+    let app: INestApplication | undefined;
+    try {
+      const started = await startTestServer(storeFile);
+      app = started.app;
+
+      const login = await requestJson<DemoSession>(started.baseUrl, "/auth/demo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          displayName: "Trainer A",
+          installId: "install-sync",
+        }),
+      });
+      const createdPet = await requestJson<PetResponse>(started.baseUrl, "/pets/roll-initial", {
+        method: "POST",
+        headers: authHeaders(login.body!.accessToken),
+        body: JSON.stringify({ nickname: "Nova" }),
+      });
+
+      const sync = await requestJson<PetResponse>(started.baseUrl, `/pets/${createdPet.body!.id}/sync`, {
+        method: "POST",
+        headers: authHeaders(login.body!.accessToken),
+        body: JSON.stringify({
+          deviceId: "install-sync",
+          timeIntegrity: "ok",
+          pendingCareActions: [
+            {
+              id: "care-1",
+              action: "feed",
+              startedAt: "2026-03-10T00:00:00.000Z",
+              completedAt: "2026-03-10T00:00:20.000Z",
+              durationMs: 20_000,
+              revisionBase: 0,
+              deviceId: "install-sync",
+            },
+          ],
+          snapshot: {
+            ...createdPet.body,
+            revision: 3,
+            lifeState: "good",
+            careState: {
+              hunger: 95,
+              mood: 92,
+              hygiene: 88,
+              energy: 90,
+              bond: 34,
+            },
+          },
+        }),
+      });
+
+      expect(sync.response.status).toBe(201);
+      expect(sync.body?.revision).toBe(3);
+      expect(sync.body?.primaryDeviceId).toBe("install-sync");
+      expect(sync.body?.careState.hunger).toBe(95);
+    } finally {
+      await stopTestServer(app);
+    }
+  });
+
+  it("rejects pet sync from a different device id", async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pixelpet-server-"));
+    const storeFile = path.join(tempDir, "store.json");
+
+    let app: INestApplication | undefined;
+    try {
+      const started = await startTestServer(storeFile);
+      app = started.app;
+
+      const login = await requestJson<DemoSession>(started.baseUrl, "/auth/demo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          displayName: "Trainer A",
+          installId: "install-owner",
+        }),
+      });
+      const createdPet = await requestJson<PetResponse>(started.baseUrl, "/pets/roll-initial", {
+        method: "POST",
+        headers: authHeaders(login.body!.accessToken),
+        body: JSON.stringify({ nickname: "Nova" }),
+      });
+
+      const sync = await requestJson<{ message: string }>(started.baseUrl, `/pets/${createdPet.body!.id}/sync`, {
+        method: "POST",
+        headers: authHeaders(login.body!.accessToken),
+        body: JSON.stringify({
+          deviceId: "install-other",
+          timeIntegrity: "ok",
+          pendingCareActions: [],
+          snapshot: {
+            ...createdPet.body,
+            revision: createdPet.body!.revision,
+          },
+        }),
+      });
+
+      expect(sync.response.status).toBe(409);
+      expect(sync.body?.message).toContain("device");
+    } finally {
+      await stopTestServer(app);
+    }
+  });
+
+  it("blocks level 0 pets from entering battle", async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pixelpet-server-"));
+    const storeFile = path.join(tempDir, "store.json");
+
+    let app: INestApplication | undefined;
+    try {
+      const started = await startTestServer(storeFile);
+      app = started.app;
+
+      const login = await requestJson<DemoSession>(started.baseUrl, "/auth/demo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          displayName: "Trainer A",
+          installId: "install-lv0",
+        }),
+      });
+      const createdPet = await requestJson<PetResponse>(started.baseUrl, "/pets/roll-initial", {
+        method: "POST",
+        headers: authHeaders(login.body!.accessToken),
+        body: JSON.stringify({ nickname: "Nova" }),
+      });
+
+      expect(createdPet.body?.level).toBe(0);
+
+      const queue = await requestJson<{ message: string }>(started.baseUrl, "/battle/queue-dev", {
+        method: "POST",
+        headers: authHeaders(login.body!.accessToken),
+        body: JSON.stringify({ petId: createdPet.body!.id }),
+      });
+
+      expect(queue.response.status).toBe(400);
+      expect(queue.body?.message).toContain("level 1");
     } finally {
       await stopTestServer(app);
     }
@@ -362,7 +512,6 @@ describe("server integration", () => {
     try {
       const started = await startTestServer(storeFile);
       app = started.app;
-      vi.spyOn(Math, "random").mockReturnValue(0);
 
       const login = await requestJson<DemoSession>(started.baseUrl, "/auth/demo", {
         method: "POST",
@@ -378,7 +527,25 @@ describe("server integration", () => {
         body: JSON.stringify({ nickname: "Nova" }),
       });
 
-      const queue = await requestJson<{ battleId: string }>(started.baseUrl, "/battle/queue-dev", {
+      await stopTestServer(app);
+      app = undefined;
+
+      const persisted = JSON.parse(fs.readFileSync(storeFile, "utf8")) as {
+        pets: PetResponse[];
+      };
+      persisted.pets[0] = {
+        ...persisted.pets[0],
+        level: 6,
+        experience: 20,
+      };
+      fs.writeFileSync(storeFile, JSON.stringify(persisted, null, 2), "utf8");
+
+      ({ app } = await startTestServer(storeFile));
+      const address = app.getHttpServer().address() as AddressInfo;
+      const baseUrl = `http://127.0.0.1:${address.port}`;
+      vi.spyOn(Math, "random").mockReturnValue(0);
+
+      const queue = await requestJson<{ battleId: string }>(baseUrl, "/battle/queue-dev", {
         method: "POST",
         headers: authHeaders(login.body!.accessToken),
         body: JSON.stringify({ petId: createdPet.body!.id }),
@@ -388,7 +555,7 @@ describe("server integration", () => {
       let battleResult: { result?: { winnerUserId: string } } | null = null;
       for (let turn = 0; turn < 20; turn += 1) {
         const action = await requestJson<{ result?: { winnerUserId: string } }>(
-          started.baseUrl,
+          baseUrl,
           `/battle/${queue.body!.battleId}/action`,
           {
             method: "POST",
@@ -404,11 +571,11 @@ describe("server integration", () => {
 
       expect(battleResult?.result).toBeDefined();
 
-      const updatedPet = await requestJson<PetResponse | null>(started.baseUrl, "/pets/me", {
+      const updatedPet = await requestJson<PetResponse | null>(baseUrl, "/pets/me", {
         headers: authHeaders(login.body!.accessToken),
       });
 
-      expect(updatedPet.body?.experience).toBeGreaterThan(createdPet.body!.experience);
+      expect(updatedPet.body?.experience).toBeGreaterThan(20);
       expect(updatedPet.body?.careState).not.toEqual(createdPet.body!.careState);
     } finally {
       await stopTestServer(app);

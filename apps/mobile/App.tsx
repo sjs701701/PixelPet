@@ -10,10 +10,14 @@ import {
   CareState,
   ElementType,
   PET_TEMPLATES,
+  PetGrowthCurveId,
   PetLifeState,
   PetTraitId,
+  TimeIntegrityState,
+  getBattleStatBlock,
   getElementAdvantageTier,
   getCareActionDurationMs,
+  getEvolutionStage,
   getExpRequiredForLevel,
 } from "@pixel-pet-arena/shared";
 import { PetSprite } from "./components/PetSprite";
@@ -143,6 +147,10 @@ function AppShell() {
     premiumDevEnabled,
     premiumTogglePending,
     premiumErrorMessage,
+    offlineMode,
+    syncPending,
+    syncErrorMessage,
+    timeIntegrity,
     handleLogin,
     handleLogout,
     handleRefreshPet,
@@ -206,7 +214,7 @@ function AppShell() {
           : current
       ));
 
-      handleCare(activeCareTask.action)
+      handleCare(activeCareTask.action, activeCareTask.startedAt, activeCareTask.durationMs)
         .catch(() => undefined)
         .finally(() => {
           setActiveCareTask((current) => (current?.id === activeCareTask.id ? undefined : current));
@@ -302,6 +310,7 @@ function AppShell() {
             petTemplateElement={homeShowcaseTemplate?.element}
             petBaseStats={homeShowcaseTemplate?.baseStats}
             petTraitId={homeShowcaseTemplate?.traitId}
+            petGrowthCurveId={homeShowcaseTemplate?.growthCurveId}
             petFlavorText={homeShowcaseTemplate?.flavorText}
             petLifeState={pet?.lifeState}
             petCriticalSince={pet?.criticalSince}
@@ -309,6 +318,9 @@ function AppShell() {
             petLevel={pet?.level}
             petExp={pet?.experience}
             careState={pet?.careState}
+            offlineMode={offlineMode}
+            syncPending={syncPending}
+            syncErrorMessage={syncErrorMessage}
             dangerPopupKey={dangerPopupKey}
             dismissedDangerKey={dismissedDangerKey}
             firstPetPending={firstPetPending}
@@ -330,6 +342,11 @@ function AppShell() {
             petTemplateElement={petTemplate?.element}
             petTemplateId={petTemplate?.id}
             petLifeState={pet?.lifeState}
+            petLevel={pet?.level}
+            offlineMode={offlineMode}
+            syncPending={syncPending}
+            syncErrorMessage={syncErrorMessage}
+            timeIntegrity={timeIntegrity}
             queuePending={queuePending}
             queueResult={queueResult}
             onRefreshPet={handleRefreshPet}
@@ -506,6 +523,7 @@ function HomeTab({
   petTemplateElement,
   petBaseStats,
   petTraitId,
+  petGrowthCurveId,
   petFlavorText,
   petLifeState,
   petCriticalSince,
@@ -513,6 +531,9 @@ function HomeTab({
   petLevel,
   petExp,
   careState,
+  offlineMode,
+  syncPending,
+  syncErrorMessage,
   dangerPopupKey,
   dismissedDangerKey,
   firstPetPending,
@@ -534,6 +555,7 @@ function HomeTab({
   petTemplateElement?: ElementType;
   petBaseStats?: BaseStats;
   petTraitId?: PetTraitId;
+  petGrowthCurveId?: PetGrowthCurveId;
   petFlavorText?: string;
   petLifeState?: PetLifeState;
   petCriticalSince?: string;
@@ -541,6 +563,9 @@ function HomeTab({
   petLevel?: number;
   petExp?: number;
   careState?: CareState;
+  offlineMode: boolean;
+  syncPending: boolean;
+  syncErrorMessage?: string;
   dangerPopupKey?: string;
   dismissedDangerKey?: string;
   firstPetPending: boolean;
@@ -566,9 +591,16 @@ function HomeTab({
   const [nicknameDraft, setNicknameDraft] = useState("");
   const [nicknameInputKey, setNicknameInputKey] = useState(0);
   const displayName = petNickname ?? petTemplateName;
-  const hasTraitInfo = Boolean(hasPet && petTemplateName && petTemplateElement && petBaseStats && petTraitId);
+  const hasTraitInfo = Boolean(
+    hasPet &&
+    petTemplateName &&
+    petTemplateElement &&
+    petBaseStats &&
+    petTraitId &&
+    petGrowthCurveId,
+  );
   const dangerState = petLifeState === "critical" || petLifeState === "dead";
-  const requiredExp = getExpRequiredForLevel(petLevel ?? 1);
+  const requiredExp = getExpRequiredForLevel(petLevel ?? 0);
   const petLifeCopy = getPetLifeCopy(language, petLifeState ?? "alive");
   const traitCopy = getTraitCopy(language, petTraitId);
   const statSectionTitle = language === "ko" ? "기본 전투 스탯" : "base battle stats";
@@ -580,11 +612,25 @@ function HomeTab({
   const paidReviveLabel = language === "ko" ? "유료 부활 예정" : "paid revive later";
   const remainingReviveLabel = language === "ko" ? "남은 무료 부활권" : "free revives left";
   const timeLeftLabel = language === "ko" ? "사망까지" : "time to death";
+  const previewStats = useMemo(() => {
+    if (!petBaseStats || !petTraitId || !petGrowthCurveId) {
+      return undefined;
+    }
+
+    return getBattleStatBlock({
+      baseStats: petBaseStats,
+      traitId: petTraitId,
+      growthCurveId: petGrowthCurveId,
+      level: petLevel ?? 0,
+      evolutionStage: getEvolutionStage(petLevel ?? 0),
+    });
+  }, [petBaseStats, petGrowthCurveId, petLevel, petTraitId]);
+
   const statCards = [
-    { key: "hp", label: "HP", value: petBaseStats?.hp ?? 0 },
-    { key: "attack", label: "ATK", value: petBaseStats?.attack ?? 0 },
-    { key: "defense", label: "DEF", value: petBaseStats?.defense ?? 0 },
-    { key: "speed", label: "SPD", value: petBaseStats?.speed ?? 0 },
+    { key: "hp", label: "HP", value: previewStats?.hp ?? 0 },
+    { key: "attack", label: "ATK", value: previewStats?.attack ?? 0 },
+    { key: "defense", label: "DEF", value: previewStats?.defense ?? 0 },
+    { key: "speed", label: "SPD", value: previewStats?.speed ?? 0 },
   ];
 
   function handleOpenNickname() { setNicknameInputKey((v) => v + 1); setNicknameOpen(true); }
@@ -664,6 +710,7 @@ function HomeTab({
               element={petTemplateElement}
               name={displayName ?? petTemplateName}
               templateId={petTemplateId}
+              level={petLevel ?? 0}
               size={18}
             />
           </View>
@@ -702,6 +749,18 @@ function HomeTab({
             ) : null}
             <Text style={[styles.metaValueBold, { color: c.text, marginTop: 14 }]}>Lv. {petLevel ?? 0}</Text>
             <DotExpBar value={petExp ?? 0} maxValue={requiredExp} />
+            <View style={styles.petStatusRow}>
+              {offlineMode ? (
+                <Text style={[styles.statusChip, { color: c.accent, borderColor: c.accent }]}>
+                  {language === "ko" ? "OFFLINE" : "OFFLINE"}
+                </Text>
+              ) : null}
+              {syncPending ? (
+                <Text style={[styles.statusChip, { color: c.gray, borderColor: c.divider }]}>
+                  {language === "ko" ? "동기화 대기" : "SYNC PENDING"}
+                </Text>
+              ) : null}
+            </View>
           </View>
         </View>
       ) : (
@@ -1101,14 +1160,31 @@ const ELEMENT_EMOJI: Record<ElementType, string> = {
 };
 
 type BattleFighterInfo = {
-  userId: string; name: string; element: ElementType; level: number;
-  hp: number; maxHp: number; attack: number; defense: number; speed: number;
+  userId: string;
+  name: string;
+  element: ElementType;
+  level: number;
+  lifeState: PetLifeState;
+  evolutionStage: number;
+  hp: number;
+  maxHp: number;
+  attack: number;
+  defense: number;
+  speed: number;
+  skillName?: string;
+};
+
+type BattleTurnEntry = {
+  actorUserId: string;
+  action: "attack" | "guard" | "skill";
+  damage: number;
+  missed: boolean;
 };
 type BattleState = {
   battleId: string;
   turn: number;
   fighters: [BattleFighterInfo, BattleFighterInfo];
-  logs: any[];
+  logs: BattleTurnEntry[];
   result?: { winnerUserId: string; loserUserId: string };
 };
 
@@ -1117,6 +1193,11 @@ function BattleTab({
   petTemplateElement,
   petTemplateId,
   petLifeState,
+  petLevel,
+  offlineMode,
+  syncPending,
+  syncErrorMessage,
+  timeIntegrity,
   queuePending,
   queueResult,
   onRefreshPet,
@@ -1129,6 +1210,11 @@ function BattleTab({
   petTemplateElement?: ElementType;
   petTemplateId?: string;
   petLifeState?: PetLifeState;
+  petLevel?: number;
+  offlineMode: boolean;
+  syncPending: boolean;
+  syncErrorMessage?: string;
+  timeIntegrity: TimeIntegrityState;
   queuePending: boolean;
   queueResult?: { matched: boolean; battleId?: string };
   onRefreshPet: () => Promise<unknown>;
@@ -1142,8 +1228,13 @@ function BattleTab({
   const t = getCopy(language);
   const [battleState, setBattleState] = useState<BattleState | null>(null);
   const [actionPending, setActionPending] = useState(false);
+  const [queueGate, setQueueGate] = useState<"level-zero" | "critical" | "offline" | "time-integrity">();
   const enteredBattleRef = useRef<string | null>(null);
   const battleLocked = petLifeState === "dead";
+  const battleTooYoung = (petLevel ?? 0) <= 0;
+  const battleRuleCopy = language === "ko"
+    ? "속성 우위와 상태, 스킬 빗맞음이 함께 반영됩니다."
+    : "Element advantage, life state, and skill miss chance all affect battle.";
 
   // Auto-enter battle when matched (only once per battleId)
   useEffect(() => {
@@ -1173,6 +1264,45 @@ function BattleTab({
     enteredBattleRef.current = null;
     setBattleState(null);
     onResetQueue();
+  }
+
+  function handleQueuePress() {
+    if (!petTemplateName || battleLocked) {
+      return;
+    }
+
+    if (offlineMode) {
+      setQueueGate("offline");
+      return;
+    }
+
+    if (timeIntegrity === "tampered") {
+      setQueueGate("time-integrity");
+      return;
+    }
+
+    if (battleTooYoung) {
+      setQueueGate("level-zero");
+      return;
+    }
+
+    if (petLifeState === "critical") {
+      setQueueGate("critical");
+      return;
+    }
+
+    onQueue();
+  }
+
+  function handleDismissQueueGate() {
+    setQueueGate(undefined);
+  }
+
+  function handleConfirmQueueGate() {
+    if (queueGate === "critical") {
+      onQueue();
+    }
+    setQueueGate(undefined);
   }
 
   // ───── Active Battle Screen ─────
@@ -1280,7 +1410,9 @@ function BattleTab({
               onPress={() => handleAction("skill")}
             >
               {({ pressed }) => (
-                <Text style={[bStyles.actionBtnText, { color: pressed ? c.bg : c.text }]}>{t.battle.skill}</Text>
+                <Text style={[bStyles.actionBtnText, { color: pressed ? c.bg : c.text }]}>
+                  {player.skillName ?? t.battle.skill}
+                </Text>
               )}
             </Pressable>
             <Pressable
@@ -1299,12 +1431,18 @@ function BattleTab({
         {battleState.logs.length > 0 ? (
           <View style={bStyles.logArea}>
             <Text style={[bStyles.logTitle, { color: c.gray }]}>{t.battle.battleLog}</Text>
-            {battleState.logs.map((log: any, i: number) => {
+            {battleState.logs.map((log, i) => {
               const isPlayer = log.actorUserId === myId;
               const actorName = isPlayer ? player.name : opponent.name;
               return (
                 <Text key={i} style={[bStyles.logEntry, { color: isPlayer ? c.text : c.gray }]}>
-                  {actorName}: {log.action === "guard" ? t.battle.guarded : t.battle.dmg(log.damage)}
+                  {actorName}: {
+                    log.action === "guard"
+                      ? t.battle.guarded
+                      : log.missed
+                        ? (language === "ko" ? "빗맞음" : "MISS")
+                        : t.battle.dmg(log.damage)
+                  }
                 </Text>
               );
             })}
@@ -1325,11 +1463,11 @@ function BattleTab({
       <View style={styles.battleHeader}>
         <Text style={[styles.battleTitle, { color: c.text }]}>{t.battle.title}</Text>
         <Text style={[styles.battleBody, { color: c.text }]}>{t.battle.currentFighter(fighterLabel)}</Text>
-        <Text style={[styles.battleMuted, { color: c.gray }]}>{t.battle.rule}</Text>
+        <Text style={[styles.battleMuted, { color: c.gray }]}>{battleRuleCopy}</Text>
         <FlickerButton
-          style={[styles.enterButton, { borderColor: c.divider }, (!petTemplateName || battleLocked) && styles.actionButtonDisabled]}
-          disabled={!petTemplateName || battleLocked}
-          onPress={onQueue}
+          style={[styles.enterButton, { borderColor: c.divider }, (!petTemplateName || battleLocked || queuePending) && styles.actionButtonDisabled]}
+          disabled={!petTemplateName || battleLocked || queuePending}
+          onPress={handleQueuePress}
         >
           {(inv) => (
             <Text style={[styles.battleBtnText, { color: inv ? c.bg : c.text }]}>
@@ -1346,6 +1484,37 @@ function BattleTab({
           <Text style={[styles.battleMuted, { color: c.accent }]}>
             {language === "ko" ? "사망 상태에서는 배틀에 들어갈 수 없습니다." : "Dead pets cannot enter battle."}
           </Text>
+        ) : null}
+        {!battleLocked && offlineMode ? (
+          <Text style={[styles.battleMuted, { color: c.accent }]}>
+            {language === "ko"
+              ? "배틀은 인터넷 연결 후 이용할 수 있습니다."
+              : "Battles are only available while connected to the internet."}
+          </Text>
+        ) : null}
+        {!battleLocked && !offlineMode && syncPending ? (
+          <Text style={[styles.battleMuted, { color: c.gray }]}>
+            {language === "ko"
+              ? "배틀 시작 전에 로컬 펫 상태를 서버와 동기화합니다."
+              : "The current pet state will sync before the battle begins."}
+          </Text>
+        ) : null}
+        {!battleLocked && timeIntegrity === "tampered" ? (
+          <Text style={[styles.battleMuted, { color: c.accent }]}>
+            {language === "ko"
+              ? "기기 시간이 비정상적으로 변경되어 배틀이 잠시 제한됩니다. 온라인 동기화 후 다시 시도하세요."
+              : "Battle is paused until the device time is validated online."}
+          </Text>
+        ) : null}
+        {!battleLocked && battleTooYoung ? (
+          <Text style={[styles.battleMuted, { color: c.gray }]}>
+            {language === "ko"
+              ? "Lv.1이 되면 배틀에 참여할 수 있습니다."
+              : "Reach Lv.1 to enter battle."}
+          </Text>
+        ) : null}
+        {syncErrorMessage ? (
+          <Text style={[styles.errorText, { color: c.accent }]}>{syncErrorMessage}</Text>
         ) : null}
       </View>
 
@@ -1377,6 +1546,86 @@ function BattleTab({
           );
         })}
       </View>
+      <Modal
+        visible={Boolean(queueGate)}
+        transparent
+        animationType="fade"
+        onRequestClose={handleDismissQueueGate}
+      >
+        <Pressable style={styles.modalOverlay} onPress={handleDismissQueueGate}>
+          <Pressable
+            style={[styles.modalBox, { backgroundColor: c.bg, borderColor: c.divider }]}
+            onPress={(event) => event.stopPropagation()}
+          >
+            <Text style={[styles.modalTitle, { color: c.text }]}>
+              {queueGate === "level-zero"
+                ? (language === "ko" ? "아직 어려요" : "Too Young")
+                : queueGate === "critical"
+                  ? (language === "ko" ? "위기 상태" : "Critical State")
+                  : queueGate === "offline"
+                    ? (language === "ko" ? "오프라인 모드" : "Offline Mode")
+                    : (language === "ko" ? "시간 확인 필요" : "Time Check Needed")}
+            </Text>
+            <Text style={[styles.modalSubtitle, { color: c.gray }]}>
+              {queueGate === "level-zero"
+                ? (language === "ko"
+                  ? "현재 펫은 아직 너무 어려서 배틀에 참여할 수 없습니다. Lv.1이 되면 참여할 수 있습니다."
+                  : "This pet is still too young for battle. It can enter once it reaches Lv.1.")
+                : queueGate === "critical"
+                  ? (language === "ko"
+                    ? "현재 펫은 위기 상태라 전투 능력치가 감소합니다. 그래도 배틀을 시작하시겠습니까?"
+                    : "This pet is in a critical state, so its battle stats are reduced. Start the battle anyway?")
+                  : queueGate === "offline"
+                    ? (language === "ko"
+                      ? "배틀은 인터넷 연결 후 이용할 수 있습니다."
+                      : "Battles are only available while connected to the internet.")
+                    : (language === "ko"
+                      ? "기기 시간이 비정상적으로 변경되어 배틀이 잠시 제한됩니다. 온라인 동기화 후 다시 시도하세요."
+                      : "Battle is paused until the device time is validated online.")}
+            </Text>
+            <View style={styles.nicknameActions}>
+              {queueGate === "critical" ? (
+                <>
+                  <FlickerButton
+                    style={[styles.modalButton, { borderColor: c.divider }]}
+                    onPress={handleDismissQueueGate}
+                  >
+                    {(inv) => (
+                      <Text style={[styles.modalButtonText, { color: inv ? c.bg : c.gray }]}>
+                        {language === "ko" ? "취소" : "cancel"}
+                      </Text>
+                    )}
+                  </FlickerButton>
+                  <FlickerButton
+                    style={[styles.modalButton, { borderColor: c.divider }]}
+                    onPress={handleConfirmQueueGate}
+                  >
+                    {(inv) => (
+                      <Text style={[styles.modalButtonText, { color: inv ? c.bg : c.text }]}>
+                        {language === "ko" ? "계속 진행" : "continue"}
+                      </Text>
+                    )}
+                  </FlickerButton>
+                </>
+              ) : (
+                <FlickerButton
+                  style={[styles.modalButtonSingle, { borderColor: c.divider }]}
+                  onPress={handleDismissQueueGate}
+                >
+                  {(inv) => (
+                    <Text style={[styles.modalButtonText, { color: inv ? c.bg : c.text }]}>
+                      {language === "ko" ? "확인" : "ok"}
+                    </Text>
+                  )}
+                </FlickerButton>
+              )}
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+      {syncErrorMessage ? (
+        <Text style={[styles.errorText, { color: c.accent }]}>{syncErrorMessage}</Text>
+      ) : null}
     </>
   );
 }
@@ -1436,6 +1685,7 @@ function CollectionTab({
                 element={template.element}
                 name={getElementLabel(language, template.element)}
                 templateId={template.id}
+                stage={1}
                 size={7}
               />
               <Text style={[styles.collectionName, { color: c.text }]}>{template.name}</Text>

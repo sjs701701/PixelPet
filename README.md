@@ -2,208 +2,209 @@
 
 PixelPet is a retro-styled mobile pet prototype built with `Expo + React Native`, `NestJS`, and a shared gameplay package.
 
-This repository is currently optimized for local development and rapid gameplay iteration, not production deployment. A new developer should be able to read this document and understand:
+The project is currently optimized for local development and gameplay iteration. The core product direction is:
 
-- what each app/package does
-- how the current app flow works
-- which gameplay policies are already fixed in code
-- which parts are still prototype-only
-- how to run and test the project locally
+- pet raising works offline first on the device
+- battle is online only
+- gameplay rules live in `packages/shared`
+- server acts as account/session storage, battle host, and sync target
 
-![Pixel Pet Arena screenshot](./screenshots/1.jpg)
+![PixelPet screenshot](./screenshots/1.jpg)
 
-## 1. Project Summary
+## 1. What This App Is
 
-The current prototype focuses on a single active pet loop:
+The current prototype lets a player:
 
 - sign in with a device-based demo account
-- receive one random starter pet
-- maintain care stats through timed actions
-- grow through passive time-based XP and battle rewards
+- receive one active pet
+- raise that pet through timed care actions
+- progress through local time simulation, XP, level ups, and stage changes
 - enter `critical` and `dead` states if neglected
 - revive with limited free tickets or accept the pet's death
-- inspect pet species and trait information from the home screen
-- test premium-only behavior with a settings toggle
-- run local dev battles against a bot
+- inspect species and trait info from the home screen
+- toggle a dev premium mode from settings
+- fight an online dev battle against a bot when connected
 
-The repository is split into three main parts:
+This is not a production app yet. It is a local-first pet prototype with a server-backed battle/sync layer.
 
-- `apps/mobile`: Expo mobile client
-- `apps/server`: NestJS API server
-- `packages/shared`: shared types and gameplay rules used by both sides
+## 2. Repository Layout
 
-## 2. Current Scope And Non-Goals
+```text
+.
+|- apps/
+|  |- mobile/   Expo mobile client
+|  \- server/   NestJS API server
+|- packages/
+|  \- shared/   Shared domain types and gameplay rules
+\- README.md
+```
 
-### In Scope
+### `apps/mobile`
 
-- local demo login
-- local JSON persistence
-- one active pet per user
-- home care loop
-- trait system
-- level / XP / death / revive loop
-- dev premium toggle
-- dev battle flow against a bot
-- shared tests for gameplay rules
+- `App.tsx`
+  Main UI shell, tab rendering, modals, and pixel UI composition
+- `lib/use-app-shell.ts`
+  Session restore, offline pet projection, local care flow, sync orchestration, premium toggle, battle gating
+- `lib/offline-pet.ts`
+  Local pet snapshot storage, local progression simulation, pending care queue, sync metadata
+- `lib/api/`
+  Domain-based API client modules
+- `lib/auth/`
+  AsyncStorage session and install-id helpers
+- `components/`
+  Pixel UI components including `PetSprite`
 
-### Out Of Scope For Now
+### `apps/server`
 
-- production auth providers
-- production database
-- real in-app purchase receipt verification
-- finalized multiplayer battle policy
-- production security hardening
-- deployment / observability setup
+- `src/auth/`
+  Demo login and session creation
+- `src/pet/`
+  Pet retrieval, revive, accept-death, snapshot sync
+- `src/care/`
+  Care endpoint used by the legacy server path and online flows
+- `src/battle/`
+  Dev battle queue, battle creation, turn resolution
+- `src/premium/`
+  Dev premium status/toggle endpoints
+- `src/common/`
+  Guard/session handling and local JSON persistence
 
-## 3. Architecture At A Glance
+### `packages/shared`
+
+- `src/types.ts`
+  Core domain model
+- `src/care.ts`
+  Care deltas, care durations, neglect decay
+- `src/progression.ts`
+  XP bands, tick simulation, life-state transitions, revive constants
+- `src/traits.ts`
+  Trait definitions and trait battle effects
+- `src/forms.ts`
+  Level-to-stage helpers and form/stage policies
+- `src/battle.ts`
+  Battle stat creation and turn resolution
+- `src/content/templates.ts`
+  Pet template roster
+
+## 3. Architecture
 
 ```mermaid
 flowchart LR
-    A["Mobile App (Expo / React Native)"] --> B["NestJS Server"]
-    B --> C["Local JSON Store"]
-    A --> D["Shared Gameplay Rules"]
-    B --> D
+    A["Mobile App"] --> B["Local Pet Snapshot"]
+    A --> C["NestJS Server"]
+    C --> D["Local JSON Store"]
+    A --> E["Shared Gameplay Rules"]
+    C --> E
 ```
 
-### Design Principle
+### Source Of Truth
 
-Core game rules live in `packages/shared` first, then both mobile and server consume the same logic.
+The app now uses a split ownership model:
 
-Examples:
+- pet raising state is local-first on the device
+- battle is server-hosted and online only
+- server stores the synced pet snapshot and account/session data
+- shared gameplay rules are reused on both mobile and server
 
-- pet templates
-- elements
-- traits
-- care stat deltas
-- neglect decay
-- progression thresholds
-- battle stat generation
-- battle turn resolution
+That means the mobile app can continue raising a pet without a network connection, but battle still requires sync plus connectivity.
 
-This keeps mobile UI and server simulation aligned.
+## 4. Current Runtime Flow
 
-## 4. Repository Layout
+### App Startup
 
-### Root
+1. Read stored session
+2. Read locally cached pet snapshot
+3. If a local pet exists, project it forward locally and enter the app immediately
+4. If network is available, try syncing/refetching in the background
+5. If there is no stored session, go to demo login
 
-- `package.json`
-  Workspace scripts for `dev:mobile`, `dev:server`, `build`, `test`
-- `README.md`
-  Developer onboarding and current product policy
+### Login
 
-### Mobile App
-
-- `apps/mobile/App.tsx`
-  Main UI shell, tab rendering, home/battle/collection/settings screens
-- `apps/mobile/lib/use-app-shell.ts`
-  Session restore, login, pet fetch, premium toggle, mutation orchestration
-- `apps/mobile/lib/api/`
-  Mobile API client split by domain
-  - `auth.ts`
-  - `pets.ts`
-  - `battle.ts`
-  - `premium.ts`
-  - `client.ts`
-- `apps/mobile/lib/auth/`
-  AsyncStorage session and install-id helpers
-- `apps/mobile/lib/store/`
-  Zustand session store
-- `apps/mobile/lib/pet-life.ts`
-  UI copy for `good / alive / critical / dead`
-- `apps/mobile/lib/pet-traits.ts`
-  UI copy for trait names and descriptions
-- `apps/mobile/components/`
-  Pixel UI components like `PetSprite`, `PixelCard`, `PixelIcon`
-- `apps/mobile/theme/`
-  Theme colors and theme context
-- `apps/mobile/assets/`
-  fonts, icons, and sprite assets
-
-### Server App
-
-- `apps/server/src/main.ts`
-  Nest bootstrap, CORS, JSON middleware, port `3001`
-- `apps/server/src/app.module.ts`
-  Module composition
-- `apps/server/src/auth/`
-  Demo login and session creation
-- `apps/server/src/pet/`
-  Pet retrieval, revive, accept-death, ownership checks
-- `apps/server/src/care/`
-  Care action endpoint
-- `apps/server/src/battle/`
-  Battle queue, dev bot battle, battle action handling
-- `apps/server/src/premium/`
-  Premium status and dev toggle
-- `apps/server/src/replay/`
-  Premium replay listing
-- `apps/server/src/content/`
-  Template/content listing
-- `apps/server/src/common/`
-  Auth guard, sessions, in-memory store facade, local JSON persistence
-
-### Shared Package
-
-- `packages/shared/src/types.ts`
-  Core domain types
-- `packages/shared/src/content/templates.ts`
-  Pet roster definition
-- `packages/shared/src/elements.ts`
-  Element advantage rules
-- `packages/shared/src/traits.ts`
-  Trait definitions and trait battle effects
-- `packages/shared/src/care.ts`
-  Care action deltas, timed care config, neglect decay
-- `packages/shared/src/progression.ts`
-  XP bands, life-state simulation, revive constants, battle aftermath XP
-- `packages/shared/src/battle.ts`
-  Battle fighter stat creation and turn resolution
-
-## 5. Current Runtime Flow
-
-### 5.1 App Startup
-
-1. Splash screen
-2. Session restore check
-3. If stored session is valid, fetch current pet from server
-4. If session is missing or invalid, go to login
-
-### 5.2 Login
-
-- current login is `demo` only
+- auth mode is currently `demo` only
 - mobile creates or reuses an `installId`
-- server uses that `installId` to identify the same demo user
-- display name is derived from install id and is not the real identity key
+- server uses `installId` as the stable identity key
+- display name is derived from that id and is not the real account key
 
-### 5.3 First Pet
+### First Pet
 
-- each user can have only one active pet
-- first pet is rolled randomly from `PET_TEMPLATES`
+- one active pet per user
+- first pet is rolled from shared templates
 - nickname is optional
-- initial pet values:
-  - `level = 1`
+- initial values:
+  - `level = 0`
   - `experience = 0`
   - `lifeState = alive`
   - `freeRevivesRemaining = 3`
 
-### 5.4 Main Tabs
+### Main Tabs
 
-- `홈`
-  active pet view, care stats, info modal, care actions, death/revive UX
-- `배틀`
-  current mobile flow uses dev battle against a bot
-- `도감`
-  preview of shared templates
-- `설정`
-  profile summary, logout, theme, language, premium dev toggle
+- `Home`
+  Active pet, care stats, species info modal, care actions, revive/death flow, offline/sync state
+- `Battle`
+  Online-only dev battle flow with connectivity and sync gates
+- `Collection`
+  Shared template preview
+- `Settings`
+  Profile summary, premium dev toggle, theme, language, logout
+
+## 5. Offline-First Pet Policy
+
+This is the most important current design decision.
+
+### What Works Offline
+
+- pet state projection
+- passive time simulation
+- level / XP progression
+- `good / alive / critical / dead` transitions
+- care completion and stat updates
+- revive and accept-death flow
+- stage calculation and sprite fallback
+- viewing home / collection / settings data that already exists locally
+
+### What Does Not Work Offline
+
+- demo login for a brand new session
+- first pet roll if the user has never synced a pet before
+- battle queueing and battle turns
+- server replay access
+- premium state refresh from server
+
+### Local Snapshot Model
+
+The mobile app stores a local pet snapshot with metadata such as:
+
+- pet state
+- `revision`
+- `primaryDeviceId`
+- `lastServerSyncAt`
+- pending care queue
+- time integrity state
+
+This is intentionally small. The app does not store large replay logs or large local databases.
+
+### Sync Strategy
+
+When the app regains connectivity:
+
+- it syncs the latest local pet snapshot back to the server
+- the server validates `deviceId`, `ownerId`, and `revision`
+- successful sync clears pending local queue entries
+
+### Offline Safety Rules
+
+- offline projection is capped to `48 hours`
+- backward device clock movement marks the pet state as `tampered`
+- tampered state stops passive XP gain
+- tampered state blocks battle until the app reconnects and validates time again
 
 ## 6. Gameplay Policies
 
-This section reflects the current code, not a future design idea.
+This section reflects the current code in this branch.
 
 ### 6.1 Elements
 
-The current prototype defines 5 elements:
+Current elements:
 
 - `fire`
 - `water`
@@ -211,9 +212,9 @@ The current prototype defines 5 elements:
 - `electric`
 - `digital`
 
-### 6.2 Pet Roster
+### 6.2 Roster
 
-The shared template roster currently contains `60` prototype templates:
+The current prototype roster contains `60` templates:
 
 - 5 elements
 - 12 templates per element
@@ -223,13 +224,11 @@ Each template includes:
 - species name
 - motif
 - rarity
-- base battle stats
+- base stat bias
 - deterministic trait
-- flavor text
+- growth curve id
 
 ### 6.3 Traits
-
-Each pet template owns exactly one trait. The trait is derived from template stat bias in shared code, not assigned manually in the mobile app.
 
 Current trait ids:
 
@@ -240,41 +239,90 @@ Current trait ids:
 - `finisher`
 - `focus`
 
-Trait info is shown in the home screen via the species info modal opened by the `i` button next to species.
+Trait info is shown in the home screen info modal opened by the `i` button next to species.
 
-### 6.4 Care System
+Trait matters in two ways:
 
-Care actions do not apply instantly anymore.
+- it gives identity to pets inside the same element
+- it changes final battle growth direction at high levels
+
+### 6.4 Level, Stage, And Growth
+
+Stage policy:
+
+- `stage0 = Lv0`
+- `stage1 = Lv1-4`
+- `stage2 = Lv5-9`
+- `stage3 = Lv10-20`
+
+Display policy:
+
+- `Lv0` uses an element-based starter form
+- `Lv1+` uses species-stage form data where available
+- collection screen uses `stage1` style display
+
+Level XP requirements:
+
+| Level Range | Required XP |
+| --- | ---: |
+| `0 -> 1` | `30` |
+| `1 - 4` | `100` |
+| `5 - 9` | `160` |
+| `10 - 14` | `240` |
+| `15 - 20` | `360` |
+
+The home EXP bar stays fixed-width. Numeric EXP text is intentionally hidden on the home card.
+
+### 6.5 Trait-Based Final Growth
+
+At `Lv20`, pets do not share the same stat spread. Final growth depends on trait.
+
+Examples:
+
+- `guardian` finishes with higher defense
+- `assault` finishes with higher attack
+- `quickstep` finishes with higher speed
+
+Growth timing is controlled separately by a growth curve:
+
+- `sprinter`
+- `steady`
+- `surge`
+- `late-bloomer`
+
+This means two pets can share a trait but still spike at different level bands.
+
+### 6.6 Care System
+
+Care does not apply on button press.
 
 Current behavior:
 
-- user taps a care button
-- a timer starts on the client
+- the user taps a care button
+- a client-side timer starts
 - only one care action can run at a time
-- other care buttons stay disabled while the timer is running
-- the server request is sent only after the timer completes
-- if the app goes to background, the running care is cancelled
-- if the user changes tabs during care, a confirmation modal appears
+- other care buttons are disabled
+- if the timer completes, the care result is applied to the local pet snapshot
+- if the user leaves the app to background, the running care is cancelled
+- if the user tries to change tabs during care, a confirmation modal appears
 
-#### Care Cancel Modal
-
-If the user tries to leave the home tab during a running care action:
+Care leave warning:
 
 - message: `이동하면 진행중인 {케어명} 가 취소됩니다.`
 - buttons:
   - `계속 진행`
   - `취소 후 이동`
 
-#### Care Durations
+Care durations:
 
 | Action | Free | Premium |
 | --- | ---: | ---: |
-| `feed` | 20s | 15s |
-| `clean` | 30s | 25s |
-| `play` | 45s | 35s |
-| `rest` | 60s | 45s |
+| `feed` | `20s` | `15s` |
+| `clean` | `30s` | `25s` |
+| `play` | `45s` | `35s` |
+| `rest` | `60s` | `45s` |
 
-#### Care Effects
+Care effects:
 
 | Action | Effect |
 | --- | --- |
@@ -285,20 +333,16 @@ If the user tries to leave the home tab during a running care action:
 
 All care values are clamped to `0..100`.
 
-### 6.5 Time Tick And Neglect
+### 6.7 Tick Simulation And Neglect
 
 `1 tick = 2 hours`
 
 At each tick:
 
 - neglect decay is applied
-- if the pet is in `good` state at tick start, it earns `+5 XP`
+- if the pet is `good` at tick start, it earns `+5 XP`
 
-This keeps the total passive XP gain equal to the previous `4h / +10 XP` plan.
-
-#### Neglect Decay Per Tick
-
-Free users:
+Neglect decay per tick, free user:
 
 - `hunger -3.5`
 - `mood -3.5`
@@ -306,7 +350,7 @@ Free users:
 - `energy -3`
 - `bond -1.5`
 
-Premium users:
+Neglect decay per tick, premium:
 
 - `hunger -2`
 - `mood -2`
@@ -314,117 +358,81 @@ Premium users:
 - `energy -1.5`
 - `bond -0.5`
 
-Internal calculations allow decimals. The mobile UI rounds visible stat numbers to integers.
+Internal calculations allow decimals. The mobile UI rounds visible stat numbers.
 
-### 6.6 Life States
+### 6.8 Life States
 
-The pet can be in one of four states:
+States:
 
 - `good`
 - `alive`
 - `critical`
 - `dead`
 
-#### Good
+Rules:
 
-- overall average of all 5 care stats is `>= 75`
-- only `good` state earns passive XP
+- `good`
+  - total 5-stat average `>= 75`
+  - only `good` earns passive XP
+- `critical`
+  - one core stat `<= 10`, or
+  - average of `hunger/mood/hygiene/energy < 40`
+- recover from `critical`
+  - all 4 core stats `>= 25`
+  - 4-core average `>= 55`
+- `dead`
+  - `critical` sustained for `12 hours`
 
-#### Critical
+`bond` counts toward `good`, but not toward the critical threshold.
 
-The pet becomes `critical` when either rule is true:
-
-- one core stat is `<= 10`
-- average of the 4 core stats is `< 40`
-
-Core stats:
-
-- hunger
-- mood
-- hygiene
-- energy
-
-`bond` is included in `good` average, but not in the critical threshold.
-
-#### Recovering From Critical
-
-To leave `critical`, the pet must satisfy both:
-
-- all 4 core stats are `>= 25`
-- average of the 4 core stats is `>= 55`
-
-After that:
-
-- if total 5-stat average is `>= 75`, state becomes `good`
-- otherwise state becomes `alive`
-
-#### Dead
-
-- if `critical` continues for `12 hours`, the pet becomes `dead`
-- dead pets cannot use care or battle
-
-### 6.7 XP And Level Policy
-
-- max level: `20`
-- XP is stored as current-level progress, not total lifetime XP
-- when leveling up, required XP is consumed and overflow carries forward
-
-#### XP Requirement By Level Band
-
-| Level Range | Required XP |
-| --- | ---: |
-| `1 - 4` | `100` |
-| `5 - 9` | `160` |
-| `10 - 14` | `240` |
-| `15 - 20` | `360` |
-
-Home screen policy:
-
-- the EXP bar stays fixed-length
-- numeric EXP text is intentionally hidden on the home card
-- raw life-state text is also intentionally hidden on the home card
-
-### 6.8 Death, Revive, Restart
+### 6.9 Death And Revive
 
 Each pet starts with `3` free revives.
 
-#### Revive
-
-If the pet is `dead` and at least one free revive remains:
+Revive behavior:
 
 - `freeRevivesRemaining -= 1`
 - `lifeState = alive`
-- `criticalSince` and `diedAt` are cleared
-- `hunger`, `mood`, `hygiene`, `energy` are restored to `60`
-- `bond`, `level`, and `experience` stay as they were
+- `criticalSince` cleared
+- `diedAt` cleared
+- `hunger/mood/hygiene/energy = 60`
+- `bond`, `level`, and `experience` are preserved
 
-#### Accept Death
+If the player accepts death instead:
 
-If the player does not want to revive:
+- the current pet is removed
+- the app returns to the first-pet flow
 
-- the current pet is deleted
-- the user returns to the first-pet flow
+### 6.10 Battle Policy
 
-### 6.9 Battle Policy
+Battle is online only.
 
-Battle is still prototype-grade and the long-term policy is not finalized yet.
+Current mobile flow:
 
-Current state:
+- sync local state if needed
+- start dev queue
+- server creates a battle against a bot
 
-- server has normal queue and dev queue endpoints
-- mobile currently uses `queue-dev`
-- dev queue immediately creates a battle against a bot
-- battle outcome applies:
-  - XP reward
-  - care-stat aftermath
-  - pet refresh on the mobile client
+Battle entry gates:
 
-#### Battle XP
+- offline: blocked
+- `timeIntegrity = tampered`: blocked
+- `Lv0`: blocked with the `아직 어려요` modal
+- `dead`: blocked
+- `critical`: requires a warning confirm first
+
+Current battle direction:
+
+- server-hosted dev bot battle
+- long-term real PvP policy is still not finalized
+- battle applies XP plus care-stat aftermath to the pet
+
+Battle rewards:
 
 - win: `+20 XP`
 - lose: `+8 XP`
 
-#### Battle Aftermath
+Battle aftermath:
 
 Winner:
 
@@ -442,80 +450,100 @@ Loser:
 - `mood -8`
 - `bond +1`
 
-### 6.10 Premium Policy
+### 6.11 Premium Policy
 
-Premium is currently a development/testing feature, not a real commerce feature.
+Premium is still a development/testing feature.
 
 Current behavior:
 
-- settings tab contains a premium mode switch
-- the switch directly calls the server dev toggle
-- no environment flag is required anymore
-- `verify-purchase` is intentionally not implemented
+- settings screen contains an animated premium switch
+- the switch talks to the dev toggle endpoint directly
+- no environment flag is required now
+- receipt verification is intentionally not implemented
 
 Premium currently affects:
 
 - shorter care durations
-- replay access
 - slower neglect decay
+- replay access
 
-### 6.11 Persistence Policy
+## 7. Persistence Model
 
-This project currently uses local persistence only.
+### Mobile
 
-Mobile persists:
+Mobile stores:
 
 - install id
 - session token
 - session user
+- local pet snapshot
+- pending care queue
 - language
 - theme
 
-Server persists:
+### Server
+
+Server stores:
 
 - users
 - pets
 - sessions
 - replays
 
-Server storage file:
+Current server persistence file:
 
 - `apps/server/data/store.json`
 
 Notes:
 
-- the file is local and gitignored
+- it is local and gitignored
 - deleting it resets local server-side progress
-- tests can override the path with `PIXELPET_STORE_FILE`
+- tests can override the file path with `PIXELPET_STORE_FILE`
 
-## 7. Important UI Decisions
+## 8. Sync And Conflict Rules
 
-These are current product decisions reflected in code:
+Current server sync route:
 
-- home screen shows EXP bar only, not numeric EXP text
-- home screen hides raw life-state text on the main card
-- species info is opened by the `i` button next to species
-- the first-pet naming modal title is `이름 지어주기`
-- the helper text under the name input is intentionally hidden from end users
-- premium mode is controlled from the top profile row with an animated switch
+- `POST /pets/:id/sync`
 
-## 8. API Summary
+Sync validation currently checks:
+
+- requesting user owns the pet
+- syncing device id matches the session install id
+- snapshot revision is not older than the server revision
+- `primaryDeviceId` mismatch is rejected
+
+This gives us basic protection against stale or wrong-device overwrites, but the user-facing conflict UX is still incomplete.
+
+## 9. Important UI Decisions
+
+Current UI policies reflected in code:
+
+- home card hides raw life-state text
+- home card hides numeric EXP text
+- species info opens from the `i` button beside species
+- first-pet modal title is `이름 지어주기`
+- helper text under the first-pet name input is intentionally hidden
+- premium mode is controlled from the top settings row with an animated switch
+- home shows small offline and sync-pending chips
+- battle screen explains when queueing is blocked by offline or time-integrity state
+
+## 10. API Summary
 
 ### Auth
 
 - `POST /auth/demo`
-  create or restore a demo user from `installId`
-- `POST /auth/social`
-  placeholder route for future provider-based auth
+- `POST /auth/social` placeholder
 
 ### Pets
 
 - `POST /pets/roll-initial`
 - `GET /pets/me`
 - `GET /pets/:id`
+- `POST /pets/:id/care`
 - `POST /pets/:id/revive`
 - `POST /pets/:id/accept-death`
-- `POST /pets/:id/care`
+- `POST /pets/:id/sync`
 
 ### Battle
 
@@ -525,91 +553,54 @@ These are current product decisions reflected in code:
 - `POST /battle/:id/action`
 - `GET /battle/replays`
 
-### Content
-
-- `GET /content/characters`
-
 ### Premium
 
 - `GET /premium/status`
 - `POST /premium/dev/toggle`
-- `POST /premium/verify-purchase`  
-  currently returns `501 Not Implemented`
+- `POST /premium/verify-purchase`
 
-## 9. Running The Project
+### Content
 
-### 9.1 Install
+- `GET /content/characters`
 
-From the repository root:
+## 11. Running The Project
+
+Install from the repo root:
 
 ```bash
 npm install
 ```
 
-### 9.2 Start The Server
+Start the server:
 
 ```bash
 npm run dev:server
 ```
 
-Server URL:
-
-- `http://localhost:3001`
-
-### 9.3 Start The Mobile App
+Start the mobile app:
 
 ```bash
 npm run dev:mobile
 ```
 
-Or inside the mobile workspace:
-
-```bash
-cd apps/mobile
-npx expo start
-```
-
-### 9.4 Mobile API Resolution
-
-The mobile client resolves the API target in this order:
+Mobile API resolution order:
 
 1. `EXPO_PUBLIC_API_URL` from `apps/mobile/.env.local`
 2. Android emulator default: `http://10.0.2.2:3001`
 3. iOS simulator / web default: `http://localhost:3001`
 
-To override:
+For a real device, point `EXPO_PUBLIC_API_URL` to your LAN IP.
 
-```bash
-cd apps/mobile
-copy .env.example .env.local
-```
+## 12. Build And Test
 
-Then set:
-
-```bash
-EXPO_PUBLIC_API_URL=http://YOUR_IP:3001
-```
-
-### 9.5 Real Device Testing
-
-Use your PC LAN IP:
-
-```bash
-EXPO_PUBLIC_API_URL=http://192.168.0.10:3001
-```
-
-Make sure the phone and PC are on the same network.
-
-## 10. Build And Test
-
-From the repository root:
+From the repo root:
 
 ```bash
 npm run build
 npm test
 ```
 
-Workspace-level commands:
+Useful workspace commands:
 
 ```bash
 npm run build --workspace @pixel-pet-arena/shared
@@ -618,32 +609,47 @@ npm run test --workspace @pixel-pet-arena/server
 npm run test --workspace @pixel-pet-arena/mobile
 ```
 
-Current automated coverage includes:
+Automated coverage currently includes:
 
 - shared gameplay rules
 - server integration flow
 - mobile session/storage helpers
-- mobile pet life / trait helpers
+- mobile offline pet logic
 
-## 11. Visual And Asset Notes
+## 13. Still To Implement
 
-- the app uses `Mona12` and `Mona12-Bold`
-- dark theme is the default, with a light mode toggle in settings
-- care buttons use pixel icon assets
-- only some species have registered sprite-sheet animation right now
-- non-registered species fall back to generated pixel silhouettes by element
+These items are intentionally not done yet and should stay visible for the next developer.
 
-## 12. Known Prototype Constraints
+### Offline / Sync
 
-- battle policy is not final
-- mobile currently uses dev bot battle, not finalized live PvP
-- premium is a dev toggle, not real billing
-- server persistence is local JSON, not a real DB
-- replay access is premium-only in current code
-- sprite coverage is partial
-- security hardening for multi-user live deployment is not the goal of the current branch
+- explicit read-only UI when a pet is opened from a non-primary device
+- user-facing device transfer flow
+- forward clock-jump detection in addition to backward clock detection
+- richer conflict resolution UX when sync is rejected
+- optional offline first-pet creation policy if the product wants full tamagotchi-style first use without network
 
-## 13. Recommended Reading Order For New Developers
+### Battle
+
+- final battle product policy
+- replace dev bot flow with the finalized online battle model
+- clearer battle-side sync/conflict messaging
+- richer replay policy and replay UX
+
+### Content / Presentation
+
+- real stage-specific art coverage for all pets
+- finalize the roster target if it should become `5 elements x 8 pets = 40`
+- finalize skill names and stage-specific skill presentation
+
+### Platform / Product
+
+- production auth providers
+- production database
+- real purchase verification
+- deployment and monitoring
+- stronger anti-cheat/time-trust strategy for production
+
+## 14. Recommended Reading Order For New Developers
 
 If you are joining the project, read in this order:
 
@@ -651,11 +657,13 @@ If you are joining the project, read in this order:
 2. `packages/shared/src/types.ts`
 3. `packages/shared/src/care.ts`
 4. `packages/shared/src/progression.ts`
-5. `packages/shared/src/traits.ts`
-6. `packages/shared/src/battle.ts`
-7. `apps/server/src/common/store.service.ts`
-8. `apps/server/src/pet/pet.service.ts`
-9. `apps/mobile/lib/use-app-shell.ts`
-10. `apps/mobile/App.tsx`
+5. `packages/shared/src/forms.ts`
+6. `packages/shared/src/traits.ts`
+7. `packages/shared/src/battle.ts`
+8. `apps/server/src/common/store.service.ts`
+9. `apps/server/src/pet/pet.service.ts`
+10. `apps/mobile/lib/offline-pet.ts`
+11. `apps/mobile/lib/use-app-shell.ts`
+12. `apps/mobile/App.tsx`
 
-This path gives you the domain model first, then the server behavior, then the mobile shell.
+That path gives you the domain model first, then sync/persistence, then the mobile shell.

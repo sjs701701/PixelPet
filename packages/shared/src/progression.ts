@@ -1,5 +1,13 @@
 import { applyNeglectDecay } from "./care";
-import { CareState, PetInstance, PetLifeState } from "./types";
+import {
+  BaseStats,
+  CareState,
+  PetEvolutionStage,
+  PetGrowthCurveId,
+  PetInstance,
+  PetLifeState,
+  PetTraitId,
+} from "./types";
 
 export const PROGRESSION_TICK_HOURS = 2;
 export const PROGRESSION_TICK_MS = PROGRESSION_TICK_HOURS * 60 * 60 * 1000;
@@ -16,6 +24,63 @@ export const DEFAULT_FREE_REVIVES = 3;
 export const REVIVE_RESTORE_VALUE = 60;
 export const BATTLE_WIN_XP = 20;
 export const BATTLE_LOSS_XP = 8;
+export const DEFAULT_OFFLINE_SIMULATION_CAP_HOURS = 48;
+export const DEFAULT_OFFLINE_SIMULATION_CAP_MS =
+  DEFAULT_OFFLINE_SIMULATION_CAP_HOURS * 60 * 60 * 1000;
+
+const TRAIT_GROWTH_PROFILES: Record<PetTraitId, BaseStats> = {
+  assault: { hp: 52, attack: 24, defense: 8, speed: 6 },
+  guardian: { hp: 58, attack: 16, defense: 16, speed: 4 },
+  quickstep: { hp: 48, attack: 18, defense: 8, speed: 10 },
+  sturdy: { hp: 66, attack: 14, defense: 14, speed: 4 },
+  finisher: { hp: 50, attack: 22, defense: 8, speed: 8 },
+  focus: { hp: 54, attack: 20, defense: 10, speed: 6 },
+};
+
+const GROWTH_CURVE_ANCHORS: Record<PetGrowthCurveId, Array<{ level: number; progress: number }>> = {
+  sprinter: [
+    { level: 0, progress: 0 },
+    { level: 1, progress: 0.2 },
+    { level: 5, progress: 0.48 },
+    { level: 10, progress: 0.78 },
+    { level: 20, progress: 1 },
+  ],
+  steady: [
+    { level: 0, progress: 0 },
+    { level: 1, progress: 0.15 },
+    { level: 5, progress: 0.4 },
+    { level: 10, progress: 0.7 },
+    { level: 20, progress: 1 },
+  ],
+  surge: [
+    { level: 0, progress: 0 },
+    { level: 1, progress: 0.1 },
+    { level: 5, progress: 0.32 },
+    { level: 10, progress: 0.8 },
+    { level: 20, progress: 1 },
+  ],
+  "late-bloomer": [
+    { level: 0, progress: 0 },
+    { level: 1, progress: 0.08 },
+    { level: 5, progress: 0.25 },
+    { level: 10, progress: 0.6 },
+    { level: 20, progress: 1 },
+  ],
+};
+
+const STAGE_MODIFIERS: Record<PetEvolutionStage, BaseStats> = {
+  0: { hp: 0.94, attack: 0.92, defense: 0.92, speed: 0.97 },
+  1: { hp: 1, attack: 1, defense: 1, speed: 1 },
+  2: { hp: 1.04, attack: 1.04, defense: 1.04, speed: 1.02 },
+  3: { hp: 1.08, attack: 1.08, defense: 1.08, speed: 1.04 },
+};
+
+const LIFE_STATE_BATTLE_MODIFIERS: Record<PetLifeState, BaseStats> = {
+  good: { hp: 1.05, attack: 1.03, defense: 1.03, speed: 1.02 },
+  alive: { hp: 1, attack: 1, defense: 1, speed: 1 },
+  critical: { hp: 0.92, attack: 0.94, defense: 0.94, speed: 0.96 },
+  dead: { hp: 0, attack: 0, defense: 0, speed: 0 },
+};
 
 export function getOverallCareAverage(careState: CareState) {
   return (careState.hunger + careState.mood + careState.hygiene + careState.energy + careState.bond) / 5;
@@ -116,6 +181,10 @@ function resolveLifeState(pet: PetInstance, nowIso: string): PetInstance {
 }
 
 export function getExpRequiredForLevel(level: number) {
+  if (level <= 0) {
+    return 30;
+  }
+
   if (level <= 4) {
     return 100;
   }
@@ -129,6 +198,106 @@ export function getExpRequiredForLevel(level: number) {
   }
 
   return 360;
+}
+
+export function getEvolutionStage(level: number): PetEvolutionStage {
+  if (level <= 0) {
+    return 0;
+  }
+
+  if (level <= 4) {
+    return 1;
+  }
+
+  if (level <= 9) {
+    return 2;
+  }
+
+  return 3;
+}
+
+export function getTraitGrowthProfile(traitId: PetTraitId) {
+  return TRAIT_GROWTH_PROFILES[traitId];
+}
+
+export function getGrowthCurveIdForStatBias(statBias: Partial<BaseStats>): PetGrowthCurveId {
+  const hp = statBias.hp ?? 0;
+  const attack = statBias.attack ?? 0;
+  const defense = statBias.defense ?? 0;
+  const speed = statBias.speed ?? 0;
+
+  if (speed >= 2 && attack >= 1) {
+    return "sprinter";
+  }
+
+  if (defense >= 2 || hp >= 2) {
+    return "late-bloomer";
+  }
+
+  if (attack >= 2) {
+    return "surge";
+  }
+
+  return "steady";
+}
+
+export function getGrowthProgress(level: number, growthCurveId: PetGrowthCurveId) {
+  const anchors = GROWTH_CURVE_ANCHORS[growthCurveId];
+  const clampedLevel = Math.max(0, Math.min(MAX_LEVEL, level));
+
+  for (let index = 0; index < anchors.length - 1; index += 1) {
+    const current = anchors[index];
+    const next = anchors[index + 1];
+
+    if (clampedLevel === current.level) {
+      return current.progress;
+    }
+
+    if (clampedLevel < next.level) {
+      const segmentLength = next.level - current.level;
+      const segmentProgress = (clampedLevel - current.level) / segmentLength;
+      return current.progress + (next.progress - current.progress) * segmentProgress;
+    }
+  }
+
+  return 1;
+}
+
+export function getStageModifiers(stage: PetEvolutionStage) {
+  return STAGE_MODIFIERS[stage];
+}
+
+export function getLifeStateBattleModifiers(lifeState: PetLifeState) {
+  return LIFE_STATE_BATTLE_MODIFIERS[lifeState];
+}
+
+export function getBattleStatBlock(args: {
+  baseStats: BaseStats;
+  traitId: PetTraitId;
+  growthCurveId: PetGrowthCurveId;
+  level: number;
+  lifeState?: PetLifeState;
+  evolutionStage?: PetEvolutionStage;
+}) {
+  const progress = getGrowthProgress(args.level, args.growthCurveId);
+  const growth = getTraitGrowthProfile(args.traitId);
+  const stage = args.evolutionStage ?? getEvolutionStage(args.level);
+  const stageModifiers = getStageModifiers(stage);
+  const lifeModifiers = getLifeStateBattleModifiers(args.lifeState ?? "alive");
+
+  const grown = {
+    hp: args.baseStats.hp + Math.round(growth.hp * progress),
+    attack: args.baseStats.attack + Math.round(growth.attack * progress),
+    defense: args.baseStats.defense + Math.round(growth.defense * progress),
+    speed: args.baseStats.speed + Math.round(growth.speed * progress),
+  };
+
+  return {
+    hp: Math.max(1, Math.round(grown.hp * stageModifiers.hp * lifeModifiers.hp)),
+    attack: Math.max(1, Math.round(grown.attack * stageModifiers.attack * lifeModifiers.attack)),
+    defense: Math.max(1, Math.round(grown.defense * stageModifiers.defense * lifeModifiers.defense)),
+    speed: Math.max(1, Math.round(grown.speed * stageModifiers.speed * lifeModifiers.speed)),
+  };
 }
 
 export function applyExperienceGain(pet: PetInstance, xp: number): PetInstance {
@@ -190,15 +359,25 @@ export function simulatePetProgress(
   pet: PetInstance,
   now: Date | string,
   premiumAssist = false,
+  options?: {
+    maxElapsedMs?: number;
+    disablePassiveXp?: boolean;
+  },
 ): PetInstance {
   const nowIso = toIsoString(now);
   const lastSimulatedAt = pet.lastSimulatedAt ?? pet.createdAt;
+  const end = toMs(nowIso);
+  const maxElapsedMs = options?.maxElapsedMs;
+  const cappedEnd = maxElapsedMs === undefined
+    ? end
+    : Math.min(end, toMs(lastSimulatedAt) + Math.max(0, maxElapsedMs));
   let current = resolveLifeState(
     {
       ...pet,
       lastSimulatedAt,
       lifeState: pet.lifeState ?? "alive",
       freeRevivesRemaining: pet.freeRevivesRemaining ?? DEFAULT_FREE_REVIVES,
+      revision: pet.revision ?? 0,
     },
     lastSimulatedAt,
   );
@@ -206,15 +385,14 @@ export function simulatePetProgress(
   if (current.lifeState === "dead") {
     return {
       ...current,
-      lastSimulatedAt: nowIso,
+      lastSimulatedAt: new Date(cappedEnd).toISOString(),
     };
   }
 
   let cursor = toMs(lastSimulatedAt);
-  const end = toMs(nowIso);
 
-  while (cursor + PROGRESSION_TICK_MS <= end) {
-    if (current.lifeState === "good") {
+  while (cursor + PROGRESSION_TICK_MS <= cappedEnd) {
+    if (current.lifeState === "good" && !options?.disablePassiveXp) {
       current = applyExperienceGain(current, PASSIVE_XP_PER_GOOD_TICK);
     }
 
@@ -235,9 +413,9 @@ export function simulatePetProgress(
   return resolveLifeState(
     {
       ...current,
-      lastSimulatedAt: nowIso,
+      lastSimulatedAt: new Date(cappedEnd).toISOString(),
     },
-    nowIso,
+    new Date(cappedEnd).toISOString(),
   );
 }
 

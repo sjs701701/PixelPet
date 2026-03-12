@@ -1,8 +1,17 @@
-import { BadRequestException, ForbiddenException, Inject, Injectable } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+} from "@nestjs/common";
 import {
   BATTLE_LOSS_XP,
   BATTLE_WIN_XP,
+  PendingCareActionRecord,
   REVIVE_RESTORE_VALUE,
+  TimeIntegrityState,
+  PetInstance,
   applyBattleAftermath,
   applyExperienceGain,
   simulatePetProgress,
@@ -17,7 +26,8 @@ export class PetService {
   ) {}
 
   rollInitialPet(userId: string, nickname?: string) {
-    return this.store.rollInitialPet(userId, nickname);
+    const user = this.store.getUser(userId);
+    return this.store.rollInitialPet(userId, nickname, user.installId);
   }
 
   getMyPet(userId: string) {
@@ -42,6 +52,14 @@ export class PetService {
     const pet = this.assertOwnership(userId, petId);
     if (pet.lifeState === "dead") {
       throw new BadRequestException("Dead pets cannot act");
+    }
+    return pet;
+  }
+
+  assertBattleReady(userId: string, petId: string) {
+    const pet = this.assertActionable(userId, petId);
+    if (pet.level <= 0) {
+      throw new BadRequestException("Pets must reach level 1 before entering battle");
     }
     return pet;
   }
@@ -93,6 +111,54 @@ export class PetService {
 
     this.store.deletePet(petId);
     return { accepted: true };
+  }
+
+  syncSnapshot(
+    userId: string,
+    petId: string,
+    body: {
+      snapshot: PetInstance;
+      deviceId: string;
+      pendingCareActions?: PendingCareActionRecord[];
+      timeIntegrity?: TimeIntegrityState;
+    },
+  ) {
+    const pet = this.assertOwnership(userId, petId);
+    const user = this.store.getUser(userId);
+    const deviceId = body.deviceId?.trim();
+
+    if (!deviceId) {
+      throw new BadRequestException("deviceId is required");
+    }
+
+    if (user.installId && user.installId !== deviceId) {
+      throw new ConflictException("Session belongs to a different device");
+    }
+
+    if (pet.primaryDeviceId && pet.primaryDeviceId !== deviceId) {
+      throw new ConflictException("Pet is currently managed by another device");
+    }
+
+    if (body.snapshot.id !== petId || body.snapshot.ownerId !== userId) {
+      throw new BadRequestException("Snapshot does not match the requested pet");
+    }
+
+    if (body.snapshot.revision < pet.revision) {
+      throw new ConflictException("Local snapshot is older than the server version");
+    }
+
+    const syncedAt = new Date().toISOString();
+    return this.store.updatePet({
+      ...pet,
+      ...body.snapshot,
+      id: pet.id,
+      ownerId: pet.ownerId,
+      templateId: pet.templateId,
+      createdAt: pet.createdAt,
+      primaryDeviceId: deviceId,
+      revision: body.snapshot.revision,
+      lastServerSyncAt: syncedAt,
+    });
   }
 
   private savePet(userId: string, pet: ReturnType<PetService["assertOwnership"]>) {

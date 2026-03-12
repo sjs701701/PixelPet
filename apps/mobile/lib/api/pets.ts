@@ -1,4 +1,8 @@
-import { PetInstance } from "@pixel-pet-arena/shared";
+import {
+  PendingCareActionRecord,
+  PetInstance,
+  TimeIntegrityState,
+} from "@pixel-pet-arena/shared";
 import { request } from "./client";
 
 export async function rollInitialPet(token: string, nickname?: string) {
@@ -46,6 +50,26 @@ export async function acceptPetDeath(token: string, petId: string) {
     `/pets/${petId}/accept-death`,
     {
       method: "POST",
+    },
+    token,
+  );
+}
+
+export async function syncPetSnapshot(
+  token: string,
+  petId: string,
+  body: {
+    snapshot: PetInstance;
+    deviceId: string;
+    pendingCareActions: PendingCareActionRecord[];
+    timeIntegrity: TimeIntegrityState;
+  },
+) {
+  return request<PetInstance>(
+    `/pets/${petId}/sync`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
     },
     token,
   );

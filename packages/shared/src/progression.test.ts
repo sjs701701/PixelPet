@@ -3,8 +3,11 @@ import {
   DEFAULT_FREE_REVIVES,
   applyBattleAftermath,
   applyExperienceGain,
+  getEvolutionStage,
   getExpRequiredForLevel,
+  getGrowthProgress,
   getTimeToDeathMs,
+  getTraitGrowthProfile,
   simulatePetProgress,
 } from "./progression";
 import { PetInstance } from "./types";
@@ -14,7 +17,7 @@ function createPet(overrides: Partial<PetInstance> = {}): PetInstance {
     id: "pet-1",
     ownerId: "user-1",
     templateId: "fire-1",
-    level: 1,
+    level: 0,
     experience: 0,
     lifeState: "alive",
     careState: {
@@ -28,6 +31,8 @@ function createPet(overrides: Partial<PetInstance> = {}): PetInstance {
     cosmeticLoadout: {},
     lastSimulatedAt: "2026-03-10T00:00:00.000Z",
     freeRevivesRemaining: DEFAULT_FREE_REVIVES,
+    revision: 0,
+    lastServerSyncAt: "2026-03-10T00:00:00.000Z",
     createdAt: "2026-03-10T00:00:00.000Z",
     ...overrides,
   };
@@ -114,6 +119,7 @@ describe("pet progression", () => {
   });
 
   it("uses banded XP requirements and caps at level 20", () => {
+    expect(getExpRequiredForLevel(0)).toBe(30);
     expect(getExpRequiredForLevel(1)).toBe(100);
     expect(getExpRequiredForLevel(5)).toBe(160);
     expect(getExpRequiredForLevel(10)).toBe(240);
@@ -129,6 +135,32 @@ describe("pet progression", () => {
 
     expect(leveled.level).toBe(20);
     expect(leveled.experience).toBe(0);
+  });
+
+  it("maps levels to evolution stages and growth curve progress", () => {
+    expect(getEvolutionStage(0)).toBe(0);
+    expect(getEvolutionStage(1)).toBe(1);
+    expect(getEvolutionStage(5)).toBe(2);
+    expect(getEvolutionStage(10)).toBe(3);
+
+    expect(getGrowthProgress(1, "sprinter")).toBeCloseTo(0.2);
+    expect(getGrowthProgress(7, "steady")).toBeCloseTo(0.52);
+    expect(getGrowthProgress(20, "late-bloomer")).toBe(1);
+  });
+
+  it("uses trait growth profiles with different level-20 totals", () => {
+    expect(getTraitGrowthProfile("guardian")).toEqual({
+      hp: 58,
+      attack: 16,
+      defense: 16,
+      speed: 4,
+    });
+    expect(getTraitGrowthProfile("quickstep")).toEqual({
+      hp: 48,
+      attack: 18,
+      defense: 8,
+      speed: 10,
+    });
   });
 
   it("applies battle aftermath deltas", () => {

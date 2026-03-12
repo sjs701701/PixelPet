@@ -9,7 +9,8 @@ import {
   ReplayRecord,
   createBattleStats,
   compareInitiative,
-  getRandomFactor,
+  getEvolutionStage,
+  getSkillProfile,
   resolveTurn,
 } from "@pixel-pet-arena/shared";
 import { StoreService } from "../common/store.service";
@@ -36,7 +37,7 @@ export class BattleService {
   ) {}
 
   queueForBattle(userId: string, petId: string) {
-    this.pets.assertActionable(userId, petId);
+    this.pets.assertBattleReady(userId, petId);
     this.store.enqueueBattle(userId, petId);
     const pair = this.store.popMatchFor(userId);
     if (!pair) {
@@ -59,8 +60,34 @@ export class BattleService {
     return {
       ...this.toSnapshot(battle),
       fighters: [
-        { userId: left.userId, name: left.name, element: left.element, level: left.level, hp: left.hp, maxHp: left.maxHp, attack: left.attack, defense: left.defense, speed: left.speed },
-        { userId: right.userId, name: right.name, element: right.element, level: right.level, hp: right.hp, maxHp: right.maxHp, attack: right.attack, defense: right.defense, speed: right.speed },
+        {
+          userId: left.userId,
+          name: left.name,
+          element: left.element,
+          level: left.level,
+          lifeState: left.lifeState,
+          evolutionStage: left.evolutionStage,
+          hp: left.hp,
+          maxHp: left.maxHp,
+          attack: left.attack,
+          defense: left.defense,
+          speed: left.speed,
+          skillName: left.skillName,
+        },
+        {
+          userId: right.userId,
+          name: right.name,
+          element: right.element,
+          level: right.level,
+          lifeState: right.lifeState,
+          evolutionStage: right.evolutionStage,
+          hp: right.hp,
+          maxHp: right.maxHp,
+          attack: right.attack,
+          defense: right.defense,
+          speed: right.speed,
+          skillName: right.skillName,
+        },
       ],
       logs: battle.logs,
     };
@@ -88,8 +115,34 @@ export class BattleService {
     return {
       ...snapshot,
       fighters: [
-        { userId: left.userId, name: left.name, element: left.element, level: left.level, hp: left.hp, maxHp: left.maxHp, attack: left.attack, defense: left.defense, speed: left.speed },
-        { userId: right.userId, name: right.name, element: right.element, level: right.level, hp: right.hp, maxHp: right.maxHp, attack: right.attack, defense: right.defense, speed: right.speed },
+        {
+          userId: left.userId,
+          name: left.name,
+          element: left.element,
+          level: left.level,
+          lifeState: left.lifeState,
+          evolutionStage: left.evolutionStage,
+          hp: left.hp,
+          maxHp: left.maxHp,
+          attack: left.attack,
+          defense: left.defense,
+          speed: left.speed,
+          skillName: left.skillName,
+        },
+        {
+          userId: right.userId,
+          name: right.name,
+          element: right.element,
+          level: right.level,
+          lifeState: right.lifeState,
+          evolutionStage: right.evolutionStage,
+          hp: right.hp,
+          maxHp: right.maxHp,
+          attack: right.attack,
+          defense: right.defense,
+          speed: right.speed,
+          skillName: right.skillName,
+        },
       ],
       logs: updated.logs.slice(-2),
     };
@@ -117,7 +170,7 @@ export class BattleService {
       left,
       right,
       leftAction,
-      getRandomFactor(),
+      Math.random(),
     );
     turnLogs.push(leftResolution.log);
     left = leftResolution.nextActor;
@@ -130,7 +183,7 @@ export class BattleService {
         right,
         left,
         rightAction,
-        getRandomFactor(),
+        Math.random(),
       );
       turnLogs.push(rightResolution.log);
       right = rightResolution.nextActor;
@@ -168,7 +221,7 @@ export class BattleService {
 
   /** Dev-only: instantly match against a random bot */
   queueForBattleDev(userId: string, petId: string) {
-    const pet = this.pets.assertActionable(userId, petId);
+    const pet = this.pets.assertBattleReady(userId, petId);
     const template = PET_TEMPLATES.find((t) => t.id === pet.templateId);
     if (!template) throw new Error("Template missing");
 
@@ -176,12 +229,17 @@ export class BattleService {
     const otherTemplates = PET_TEMPLATES.filter((t) => t.element !== template.element);
     const botTemplate = otherTemplates[Math.floor(Math.random() * otherTemplates.length)];
 
+    const botStage = Math.max(1, getEvolutionStage(pet.level)) as 1 | 2 | 3;
+    const botSkill = getSkillProfile(botTemplate.element as ElementType, botStage);
     const botFighter = createBattleStats({
       userId: "bot-trainer",
       petId: "bot-pet",
       name: botTemplate.name,
       element: botTemplate.element as ElementType,
       level: pet.level,
+      lifeState: "alive",
+      evolutionStage: botStage,
+      growthCurveId: botTemplate.growthCurveId,
       hp: botTemplate.baseStats.hp,
       maxHp: botTemplate.baseStats.hp,
       attack: botTemplate.baseStats.attack,
@@ -189,6 +247,8 @@ export class BattleService {
       speed: botTemplate.baseStats.speed,
       guarding: false,
       traitId: botTemplate.traitId,
+      skillName: botSkill.name,
+      skillPower: botSkill.powerMultiplier,
       premiumStatus: "free",
     });
 
@@ -223,12 +283,15 @@ export class BattleService {
   }
 
   private buildFighter(userId: string, petId: string) {
-    const pet = this.pets.assertActionable(userId, petId);
+    const pet = this.pets.assertBattleReady(userId, petId);
     const user = this.store.getUser(userId);
     const template = PET_TEMPLATES.find((entry) => entry.id === pet.templateId);
     if (!template) {
       throw new Error("Template missing");
     }
+
+    const stage = Math.max(1, getEvolutionStage(pet.level)) as 1 | 2 | 3;
+    const skill = getSkillProfile(template.element, stage);
 
     return createBattleStats({
       userId,
@@ -236,6 +299,9 @@ export class BattleService {
       name: template.name,
       element: template.element,
       level: pet.level,
+      lifeState: pet.lifeState,
+      evolutionStage: stage,
+      growthCurveId: template.growthCurveId,
       hp: template.baseStats.hp,
       maxHp: template.baseStats.hp,
       attack: template.baseStats.attack,
@@ -243,6 +309,8 @@ export class BattleService {
       speed: template.baseStats.speed,
       guarding: false,
       traitId: template.traitId,
+      skillName: skill.name,
+      skillPower: skill.powerMultiplier,
       premiumStatus: user.premiumStatus,
     });
   }
