@@ -214,19 +214,37 @@ Current elements:
 
 ### 6.2 Roster
 
-The current prototype roster contains `60` templates:
+The current prototype roster contains `40` templates:
 
 - 5 elements
-- 12 templates per element
+- 8 templates per element
 
 Each template includes:
 
 - species name
-- motif
 - rarity
 - base stat bias
 - deterministic trait
 - growth curve id
+- localized `en/ko` pet content
+
+Editable roster data now lives in:
+
+- `packages/shared/src/content/data/fire.json`
+- `packages/shared/src/content/data/water.json`
+- `packages/shared/src/content/data/grass.json`
+- `packages/shared/src/content/data/electric.json`
+- `packages/shared/src/content/data/digital.json`
+
+Each entry contains:
+
+- `id`
+- `name.en`, `name.ko`
+- `description.en`, `description.ko`
+- `rarity`
+- `traitId`
+- `growthCurveId`
+- `statBias`
 
 ### 6.3 Traits
 
@@ -638,7 +656,6 @@ These items are intentionally not done yet and should stay visible for the next 
 ### Content / Presentation
 
 - real stage-specific art coverage for all pets
-- finalize the roster target if it should become `5 elements x 8 pets = 40`
 - finalize skill names and stage-specific skill presentation
 
 ### Platform / Product

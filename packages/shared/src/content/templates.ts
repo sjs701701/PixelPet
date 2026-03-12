@@ -1,88 +1,40 @@
+import digitalRoster from "./data/digital.json";
+import electricRoster from "./data/electric.json";
+import fireRoster from "./data/fire.json";
+import grassRoster from "./data/grass.json";
+import waterRoster from "./data/water.json";
 import { getSkillProfileId } from "../forms";
-import { getGrowthCurveIdForStatBias } from "../progression";
-import { getTraitIdForStatBias } from "../traits";
-import { BaseStats, ElementType, PetTemplate } from "../types";
+import {
+  BaseStats,
+  ElementType,
+  LocalizedText,
+  PetGrowthCurveId,
+  PetTemplate,
+  PetTraitId,
+  SupportedLocale,
+} from "../types";
 
-type MotifSeed = {
-  name: string;
-  motif: string;
+type PetRosterEntry = {
+  id: string;
+  name: LocalizedText;
   rarity: PetTemplate["rarity"];
+  traitId: PetTraitId;
+  growthCurveId: PetGrowthCurveId;
   statBias: Partial<BaseStats>;
+  description: LocalizedText;
 };
 
-const FIRE_SEEDS: MotifSeed[] = [
-  { name: "Pyron", motif: "ember fox spirit", rarity: "common", statBias: { attack: 2, speed: 1 } },
-  { name: "Cindrel", motif: "forge goblin", rarity: "common", statBias: { attack: 1, defense: 1 } },
-  { name: "Astraflame", motif: "phoenix hatchling", rarity: "rare", statBias: { hp: 2, attack: 2 } },
-  { name: "Brasal", motif: "volcanic salamander", rarity: "common", statBias: { defense: 2 } },
-  { name: "Ignira", motif: "candle witchling", rarity: "rare", statBias: { speed: 2 } },
-  { name: "Karvix", motif: "lava beetle", rarity: "common", statBias: { hp: 3 } },
-  { name: "Solmutt", motif: "sun hound", rarity: "epic", statBias: { attack: 3, speed: 1 } },
-  { name: "Vulkid", motif: "molten titan cub", rarity: "rare", statBias: { hp: 2, defense: 2 } },
-  { name: "Flarrow", motif: "meteor sparrow", rarity: "common", statBias: { speed: 3 } },
-  { name: "Torchi", motif: "lantern imp", rarity: "common", statBias: { attack: 1, speed: 2 } },
-  { name: "Seara", motif: "desert djinn", rarity: "rare", statBias: { hp: 1, attack: 2, speed: 1 } },
-  { name: "Hestrix", motif: "hearth guardian", rarity: "epic", statBias: { defense: 3, hp: 1 } },
-];
+type PetRosterFile = {
+  element: ElementType;
+  pets: PetRosterEntry[];
+};
 
-const WATER_SEEDS: MotifSeed[] = [
-  { name: "Marea", motif: "tidal nymph", rarity: "common", statBias: { speed: 1, hp: 1 } },
-  { name: "Neruvo", motif: "reef dragonet", rarity: "rare", statBias: { attack: 2, hp: 1 } },
-  { name: "Coralis", motif: "coral knight", rarity: "common", statBias: { defense: 2 } },
-  { name: "Brinelle", motif: "moon jelly sprite", rarity: "common", statBias: { speed: 2 } },
-  { name: "Torrun", motif: "rain golem", rarity: "rare", statBias: { hp: 2, defense: 1 } },
-  { name: "Aqualyn", motif: "river oracle", rarity: "epic", statBias: { attack: 1, speed: 2, hp: 1 } },
-  { name: "Kelpix", motif: "kelp kitsune", rarity: "common", statBias: { speed: 2, defense: 1 } },
-  { name: "Lagoona", motif: "lagoon siren", rarity: "rare", statBias: { attack: 2, speed: 1 } },
-  { name: "Drizzlep", motif: "cloud tadpole", rarity: "common", statBias: { hp: 1, speed: 2 } },
-  { name: "Marblub", motif: "glacier cub", rarity: "common", statBias: { hp: 2 } },
-  { name: "Pelagis", motif: "sea library spirit", rarity: "rare", statBias: { defense: 2, hp: 1 } },
-  { name: "Undara", motif: "abyss sentinel", rarity: "epic", statBias: { attack: 2, defense: 2 } },
-];
-
-const GRASS_SEEDS: MotifSeed[] = [
-  { name: "Verdel", motif: "forest sprout knight", rarity: "common", statBias: { defense: 1, hp: 1 } },
-  { name: "Mossel", motif: "moss bear cub", rarity: "common", statBias: { hp: 2 } },
-  { name: "Thornix", motif: "thorn mantis", rarity: "rare", statBias: { attack: 2, speed: 1 } },
-  { name: "Bloomi", motif: "garden fairy", rarity: "common", statBias: { speed: 2 } },
-  { name: "Sylroot", motif: "world tree acorn", rarity: "epic", statBias: { hp: 2, defense: 2 } },
-  { name: "Fernox", motif: "jungle prowler", rarity: "rare", statBias: { attack: 1, speed: 2 } },
-  { name: "Petalia", motif: "lotus priestess", rarity: "rare", statBias: { hp: 1, defense: 1, speed: 1 } },
-  { name: "Grovik", motif: "stone bark boar", rarity: "common", statBias: { defense: 2, hp: 1 } },
-  { name: "Bramblin", motif: "hedge trickster", rarity: "common", statBias: { speed: 2, attack: 1 } },
-  { name: "Lianora", motif: "vine dancer", rarity: "rare", statBias: { speed: 2, hp: 1 } },
-  { name: "Seedric", motif: "harvest prince", rarity: "common", statBias: { attack: 1, defense: 1 } },
-  { name: "Canor", motif: "grove guardian hound", rarity: "epic", statBias: { attack: 2, defense: 2 } },
-];
-
-const ELECTRIC_SEEDS: MotifSeed[] = [
-  { name: "Voltra", motif: "storm gryphon chick", rarity: "rare", statBias: { speed: 2, attack: 1 } },
-  { name: "Sparkit", motif: "battery raccoon", rarity: "common", statBias: { speed: 2 } },
-  { name: "Lumbolt", motif: "thunder ram", rarity: "rare", statBias: { attack: 2, defense: 1 } },
-  { name: "Arcanaut", motif: "sky pirate automa", rarity: "epic", statBias: { attack: 1, speed: 2, hp: 1 } },
-  { name: "Zappo", motif: "lightning gremlin", rarity: "common", statBias: { speed: 3 } },
-  { name: "Rivox", motif: "rail spirit", rarity: "common", statBias: { attack: 1, speed: 1 } },
-  { name: "Tempestra", motif: "storm dancer", rarity: "rare", statBias: { hp: 1, speed: 2 } },
-  { name: "Coilby", motif: "coil serpent", rarity: "common", statBias: { attack: 2 } },
-  { name: "Glintar", motif: "halo mech", rarity: "rare", statBias: { defense: 2, attack: 1 } },
-  { name: "Neonix", motif: "arc fox", rarity: "common", statBias: { speed: 2, attack: 1 } },
-  { name: "Joulie", motif: "radio sprite", rarity: "common", statBias: { hp: 1, speed: 1 } },
-  { name: "Stratosh", motif: "tempest colossus", rarity: "epic", statBias: { hp: 2, attack: 2 } },
-];
-
-const DIGITAL_SEEDS: MotifSeed[] = [
-  { name: "Nexbit", motif: "server wisp", rarity: "common", statBias: { speed: 1, attack: 1 } },
-  { name: "Patchu", motif: "glitch rabbit", rarity: "common", statBias: { speed: 2 } },
-  { name: "Byteon", motif: "cipher wolf", rarity: "rare", statBias: { attack: 2, speed: 1 } },
-  { name: "Rastera", motif: "pixel golem", rarity: "common", statBias: { defense: 2, hp: 1 } },
-  { name: "Echoid", motif: "hologram bard", rarity: "rare", statBias: { speed: 2, hp: 1 } },
-  { name: "Cronyx", motif: "clockwork daemon", rarity: "epic", statBias: { attack: 2, defense: 1 } },
-  { name: "Nibbla", motif: "data dragon", rarity: "rare", statBias: { hp: 1, attack: 2 } },
-  { name: "Vectra", motif: "vector angel", rarity: "rare", statBias: { defense: 1, speed: 2 } },
-  { name: "Kernelo", motif: "terminal cat", rarity: "common", statBias: { hp: 1, defense: 1 } },
-  { name: "Synthix", motif: "synthwave imp", rarity: "common", statBias: { attack: 1, speed: 2 } },
-  { name: "Datune", motif: "signal siren", rarity: "common", statBias: { speed: 2, defense: 1 } },
-  { name: "Omega-0", motif: "ancient machine herald", rarity: "epic", statBias: { hp: 2, defense: 2 } },
+const ACTIVE_ROSTER: PetRosterFile[] = [
+  fireRoster as PetRosterFile,
+  waterRoster as PetRosterFile,
+  grassRoster as PetRosterFile,
+  electricRoster as PetRosterFile,
+  digitalRoster as PetRosterFile,
 ];
 
 const BASELINE_STATS: Record<ElementType, BaseStats> = {
@@ -95,8 +47,7 @@ const BASELINE_STATS: Record<ElementType, BaseStats> = {
 
 function buildTemplate(
   element: ElementType,
-  seed: MotifSeed,
-  index: number,
+  seed: PetRosterEntry,
 ): PetTemplate {
   const base = BASELINE_STATS[element];
   const stats: BaseStats = {
@@ -106,16 +57,18 @@ function buildTemplate(
     speed: base.speed + (seed.statBias.speed ?? 0),
   };
 
-  const slug = seed.name.toLowerCase();
+  const slug = seed.id.startsWith(`${element}-`)
+    ? seed.id.slice(element.length + 1)
+    : seed.id;
 
   return {
-    id: `${element}-${index + 1}`,
-    name: seed.name,
+    id: seed.id,
+    name: seed.name.en,
+    localizedName: seed.name,
     element,
-    motif: seed.motif,
     rarity: seed.rarity,
-    traitId: getTraitIdForStatBias(seed.statBias),
-    growthCurveId: getGrowthCurveIdForStatBias(seed.statBias),
+    traitId: seed.traitId,
+    growthCurveId: seed.growthCurveId,
     baseStats: stats,
     spriteSet: {
       idle: `/sprites/${element}/${slug}/stage-1/idle.png`,
@@ -148,18 +101,29 @@ function buildTemplate(
         skillProfileId: getSkillProfileId(element, 3),
       },
     },
-    flavorText: `${seed.name} is a ${seed.motif} born from ${element} energy and raised for playful arena duels.`,
+    flavorText: seed.description.en,
+    localizedFlavorText: seed.description,
   };
 }
 
-export const PET_TEMPLATES: PetTemplate[] = [
-  ...FIRE_SEEDS.map((seed, index) => buildTemplate("fire", seed, index)),
-  ...WATER_SEEDS.map((seed, index) => buildTemplate("water", seed, index)),
-  ...GRASS_SEEDS.map((seed, index) => buildTemplate("grass", seed, index)),
-  ...ELECTRIC_SEEDS.map((seed, index) => buildTemplate("electric", seed, index)),
-  ...DIGITAL_SEEDS.map((seed, index) => buildTemplate("digital", seed, index)),
-];
+export const PET_TEMPLATES: PetTemplate[] = ACTIVE_ROSTER.flatMap((roster) =>
+  roster.pets.map((seed) => buildTemplate(roster.element, seed)),
+);
 
 export function getTemplateById(templateId: string): PetTemplate | undefined {
   return PET_TEMPLATES.find((template) => template.id === templateId);
+}
+
+export function getLocalizedTemplateName(
+  template: Pick<PetTemplate, "name" | "localizedName">,
+  locale: SupportedLocale,
+) {
+  return template.localizedName[locale] || template.name;
+}
+
+export function getLocalizedTemplateFlavorText(
+  template: Pick<PetTemplate, "flavorText" | "localizedFlavorText">,
+  locale: SupportedLocale,
+) {
+  return template.localizedFlavorText[locale] || template.flavorText;
 }

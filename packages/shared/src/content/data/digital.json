@@ -1,0 +1,101 @@
+{
+  "element": "digital",
+  "pets": [
+    {
+      "id": "digital-byteling",
+      "name": { "en": "Byteling", "ko": "바이트링" },
+      "rarity": "common",
+      "traitId": "focus",
+      "growthCurveId": "steady",
+      "statBias": { "attack": 1, "speed": 1 },
+      "description": {
+        "en": "It looks simple at first glance, but its body rearranges into sharper code with every fight.",
+        "ko": "단순한 데이터 덩어리처럼 보여도, 전투를 거칠수록 더 정교한 코드 형태로 재배열되는 펫입니다."
+      }
+    },
+    {
+      "id": "digital-cachel",
+      "name": { "en": "Cachel", "ko": "캐셸" },
+      "rarity": "rare",
+      "traitId": "sturdy",
+      "growthCurveId": "late-bloomer",
+      "statBias": { "hp": 2, "defense": 1 },
+      "description": {
+        "en": "It stores endless reserve data inside its frame, enduring longer than anyone expects.",
+        "ko": "몸속에 예비 데이터를 끝없이 저장해, 예상보다 훨씬 오래 버텨 내는 캐시 낙타입니다."
+      }
+    },
+    {
+      "id": "digital-pingfox",
+      "name": { "en": "Pingfox", "ko": "핑폭스" },
+      "rarity": "common",
+      "traitId": "quickstep",
+      "growthCurveId": "sprinter",
+      "statBias": { "attack": 1, "speed": 2 },
+      "description": {
+        "en": "Its movements are measured in milliseconds, slipping ahead of slower signals.",
+        "ko": "움직임이 밀리초 단위로 끊겨 보여, 느린 신호보다 한발 앞서 미끄러지는 여우입니다."
+      }
+    },
+    {
+      "id": "digital-glitchop",
+      "name": { "en": "Glitchop", "ko": "글리치홉" },
+      "rarity": "rare",
+      "traitId": "finisher",
+      "growthCurveId": "sprinter",
+      "statBias": { "attack": 1, "speed": 2 },
+      "description": {
+        "en": "Its jump path stutters in broken frames, making the final hit hard to read.",
+        "ko": "도약 궤적이 깨진 프레임처럼 흔들려, 마지막 일격의 타이밍을 읽기 어려운 토끼입니다."
+      }
+    },
+    {
+      "id": "digital-framowl",
+      "name": { "en": "Framowl", "ko": "프람아울" },
+      "rarity": "rare",
+      "traitId": "focus",
+      "growthCurveId": "surge",
+      "statBias": { "attack": 1, "speed": 2 },
+      "description": {
+        "en": "It sees the world frame by frame, striking exactly when the sequence is most favorable.",
+        "ko": "세상을 프레임 단위로 읽어 내며, 가장 유리한 장면에 정확히 스킬을 꽂는 올빼미입니다."
+      }
+    },
+    {
+      "id": "digital-shieldbit",
+      "name": { "en": "Shieldbit", "ko": "실드비트" },
+      "rarity": "common",
+      "traitId": "guardian",
+      "growthCurveId": "late-bloomer",
+      "statBias": { "hp": 1, "defense": 2 },
+      "description": {
+        "en": "Its shell renders extra layers of protection whenever the pressure on it rises.",
+        "ko": "압박이 강해질수록 갑각 위에 보호 레이어를 더 렌더링하는 방패 딱정벌레입니다."
+      }
+    },
+    {
+      "id": "digital-overon",
+      "name": { "en": "Overon", "ko": "오베론" },
+      "rarity": "epic",
+      "traitId": "assault",
+      "growthCurveId": "surge",
+      "statBias": { "hp": 1, "attack": 2 },
+      "description": {
+        "en": "Too much energy spills from its core, turning every clean hit into a dangerous overload.",
+        "ko": "핵심 코어에서 에너지가 넘쳐흘러, 깔끔한 타격 하나하나가 과부하급 위력으로 이어지는 드래곤입니다."
+      }
+    },
+    {
+      "id": "digital-patchu",
+      "name": { "en": "Patchu", "ko": "패치유" },
+      "rarity": "common",
+      "traitId": "guardian",
+      "growthCurveId": "steady",
+      "statBias": { "defense": 1, "speed": 1 },
+      "description": {
+        "en": "It fixes small cracks in its own code as it fights, surviving with tidy defensive patches.",
+        "ko": "전투 중에도 자기 코드의 균열을 틈틈이 메우며, 단정한 방어 패치로 버텨 내는 생쥐입니다."
+      }
+    }
+  ]
+}

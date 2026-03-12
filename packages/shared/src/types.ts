@@ -9,6 +9,7 @@ export type PremiumStatus = "free" | "premium";
 export type BattleAction = "attack" | "guard" | "skill";
 export type CareAction = "feed" | "clean" | "play" | "rest";
 export type TimeIntegrityState = "ok" | "tampered";
+export type SupportedLocale = "en" | "ko";
 
 export type PetLifeState = "good" | "alive" | "critical" | "dead";
 export type PetEvolutionStage = 0 | 1 | 2 | 3;
@@ -57,6 +58,11 @@ export interface SpriteSet {
   care: string;
 }
 
+export interface LocalizedText {
+  en: string;
+  ko: string;
+}
+
 export interface PetTrait {
   id: PetTraitId;
   name: string;
@@ -91,8 +97,8 @@ export interface PetFormStage {
 export interface PetTemplate {
   id: string;
   name: string;
+  localizedName: LocalizedText;
   element: ElementType;
-  motif: string;
   rarity: "common" | "rare" | "epic";
   traitId: PetTraitId;
   growthCurveId: PetGrowthCurveId;
@@ -104,6 +110,7 @@ export interface PetTemplate {
     stage3: PetFormStage;
   };
   flavorText: string;
+  localizedFlavorText: LocalizedText;
 }
 
 export interface PetInstance {

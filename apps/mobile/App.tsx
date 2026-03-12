@@ -19,6 +19,8 @@ import {
   getCareActionDurationMs,
   getEvolutionStage,
   getExpRequiredForLevel,
+  getLocalizedTemplateFlavorText,
+  getLocalizedTemplateName,
 } from "@pixel-pet-arena/shared";
 import { PetSprite } from "./components/PetSprite";
 import { PixelCard } from "./components/PixelCard";
@@ -301,20 +303,20 @@ function AppShell() {
     <View style={[styles.page, { backgroundColor: c.bg }]}>
       <StatusBar style={mode === "dark" ? "light" : "dark"} />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {tab === "home" ? (
-          <HomeTab
-            petId={pet?.id}
-            petTemplateId={homeShowcaseTemplate?.id}
-            petTemplateName={homeShowcaseTemplate?.name}
-            petNickname={pet?.nickname}
-            petTemplateElement={homeShowcaseTemplate?.element}
-            petBaseStats={homeShowcaseTemplate?.baseStats}
-            petTraitId={homeShowcaseTemplate?.traitId}
-            petGrowthCurveId={homeShowcaseTemplate?.growthCurveId}
-            petFlavorText={homeShowcaseTemplate?.flavorText}
-            petLifeState={pet?.lifeState}
-            petCriticalSince={pet?.criticalSince}
-            petFreeRevivesRemaining={pet?.freeRevivesRemaining}
+          {tab === "home" ? (
+            <HomeTab
+              petId={pet?.id}
+              petTemplateId={homeShowcaseTemplate?.id}
+              petTemplateName={homeShowcaseTemplate ? getLocalizedTemplateName(homeShowcaseTemplate, language) : undefined}
+              petNickname={pet?.nickname}
+              petTemplateElement={homeShowcaseTemplate?.element}
+              petBaseStats={homeShowcaseTemplate?.baseStats}
+              petTraitId={homeShowcaseTemplate?.traitId}
+              petGrowthCurveId={homeShowcaseTemplate?.growthCurveId}
+              petFlavorText={homeShowcaseTemplate ? getLocalizedTemplateFlavorText(homeShowcaseTemplate, language) : undefined}
+              petLifeState={pet?.lifeState}
+              petCriticalSince={pet?.criticalSince}
+              petFreeRevivesRemaining={pet?.freeRevivesRemaining}
             petLevel={pet?.level}
             petExp={pet?.experience}
             careState={pet?.careState}
@@ -335,13 +337,13 @@ function AppShell() {
             onRevive={handleRevivePet}
             onAcceptDeath={handleAcceptDeath}
           />
-        ) : null}
-        {tab === "battle" ? (
-          <BattleTab
-            petTemplateName={petTemplate?.name}
-            petTemplateElement={petTemplate?.element}
-            petTemplateId={petTemplate?.id}
-            petLifeState={pet?.lifeState}
+          ) : null}
+          {tab === "battle" ? (
+            <BattleTab
+              petTemplateName={petTemplate ? getLocalizedTemplateName(petTemplate, language) : undefined}
+              petTemplateElement={petTemplate?.element}
+              petTemplateId={petTemplate?.id}
+              petLifeState={pet?.lifeState}
             petLevel={pet?.level}
             offlineMode={offlineMode}
             syncPending={syncPending}
@@ -1676,25 +1678,25 @@ function CollectionTab({
     <>
       <Text style={[styles.sectionTitle, { color: c.text }]}>{t.collection.title}</Text>
       <Text style={[styles.bodyMuted, { color: c.gray }]}>{t.collection.body}</Text>
-      <View style={styles.collectionGrid}>
-        {collectionPreview.map((template) => {
-          const active = template.id === currentTemplateId;
-          return (
-            <View key={template.id} style={[styles.collectionItem, { borderBottomColor: active ? c.text : c.divider }]}>
-              <PetSprite
-                element={template.element}
+        <View style={styles.collectionGrid}>
+          {collectionPreview.map((template) => {
+            const active = template.id === currentTemplateId;
+            const localizedName = getLocalizedTemplateName(template, language);
+            return (
+              <View key={template.id} style={[styles.collectionItem, { borderBottomColor: active ? c.text : c.divider }]}>
+                <PetSprite
+                  element={template.element}
                 name={getElementLabel(language, template.element)}
                 templateId={template.id}
                 stage={1}
                 size={7}
-              />
-              <Text style={[styles.collectionName, { color: c.text }]}>{template.name}</Text>
-              <Text style={[styles.collectionMeta, { color: c.grayDark }]}>{t.common.rarity[template.rarity]}</Text>
-              <Text style={[styles.collectionMotif, { color: c.gray }]}>{template.motif}</Text>
-            </View>
-          );
-        })}
-      </View>
+                />
+                <Text style={[styles.collectionName, { color: c.text }]}>{localizedName}</Text>
+                <Text style={[styles.collectionMeta, { color: c.grayDark }]}>{t.common.rarity[template.rarity]}</Text>
+              </View>
+            );
+          })}
+        </View>
     </>
   );
 }
@@ -2075,7 +2077,6 @@ const styles = StyleSheet.create({
   collectionItem: { width: "46%", alignItems: "center", gap: 6, paddingVertical: 12, borderBottomWidth: 2 },
   collectionName: { fontSize: 12, fontFamily: FONT },
   collectionMeta: { fontSize: 10, fontFamily: FONT, textTransform: "lowercase" },
-  collectionMotif: { fontSize: 10, fontFamily: FONT, textAlign: "center", lineHeight: 18 },
 
   profileTitle: { fontSize: 18, fontFamily: FONT_BOLD, letterSpacing: 1 },
   profileSectionLabel: { fontSize: 14, fontFamily: FONT, letterSpacing: 2, textTransform: "lowercase" },

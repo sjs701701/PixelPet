@@ -1,0 +1,101 @@
+{
+  "element": "fire",
+  "pets": [
+    {
+      "id": "fire-sparkit",
+      "name": { "en": "Sparkit", "ko": "스파키트" },
+      "rarity": "common",
+      "traitId": "finisher",
+      "growthCurveId": "sprinter",
+      "statBias": { "attack": 2, "speed": 2 },
+      "description": {
+        "en": "A restless ember fox that darts in, scorches, and slips away before the smoke clears.",
+        "ko": "연기조차 가라앉기 전에 파고들어 불꽃 상처를 남기고 빠져나오는 불씨 여우입니다."
+      }
+    },
+    {
+      "id": "fire-emberix",
+      "name": { "en": "Emberix", "ko": "엠버릭스" },
+      "rarity": "rare",
+      "traitId": "assault",
+      "growthCurveId": "surge",
+      "statBias": { "attack": 3, "speed": 1 },
+      "description": {
+        "en": "Its claws glow like heated steel, and every strike lands like a hammer from a forge.",
+        "ko": "달아오른 강철 같은 발톱으로, 대장간 망치처럼 묵직한 일격을 꽂아 넣는 스라소니입니다."
+      }
+    },
+    {
+      "id": "fire-caldhorn",
+      "name": { "en": "Caldhorn", "ko": "콜드혼" },
+      "rarity": "rare",
+      "traitId": "sturdy",
+      "growthCurveId": "late-bloomer",
+      "statBias": { "hp": 2, "defense": 1 },
+      "description": {
+        "en": "It grows hotter the longer a fight drags on, turning patience into raw heat.",
+        "ko": "전투가 길어질수록 몸속 열이 차올라, 버티는 시간 자체를 힘으로 바꾸는 용암 산양입니다."
+      }
+    },
+    {
+      "id": "fire-brastle",
+      "name": { "en": "Brastle", "ko": "브래슬" },
+      "rarity": "common",
+      "traitId": "guardian",
+      "growthCurveId": "late-bloomer",
+      "statBias": { "hp": 1, "defense": 2 },
+      "description": {
+        "en": "Its shell traps ash and heat, forming a shield that thickens after every impact.",
+        "ko": "등껍질에 재와 열을 품어, 맞을수록 더 단단한 방패를 만들어 내는 재거북입니다."
+      }
+    },
+    {
+      "id": "fire-flarowl",
+      "name": { "en": "Flarowl", "ko": "플래라울" },
+      "rarity": "rare",
+      "traitId": "focus",
+      "growthCurveId": "steady",
+      "statBias": { "attack": 1, "speed": 1 },
+      "description": {
+        "en": "It watches in silence, then releases a concentrated flare the moment an opening appears.",
+        "ko": "잠잠히 틈을 살피다가, 빈틈이 보이는 순간 응축한 불꽃을 쏘아 보내는 올빼미입니다."
+      }
+    },
+    {
+      "id": "fire-ashpup",
+      "name": { "en": "Ashpup", "ko": "애쉬펍" },
+      "rarity": "common",
+      "traitId": "quickstep",
+      "growthCurveId": "sprinter",
+      "statBias": { "attack": 1, "speed": 2 },
+      "description": {
+        "en": "It runs across ash dunes without leaving a trace, striking before its pawprints settle.",
+        "ko": "재 언덕을 흔적도 없이 달려, 발자국이 남기 전에 먼저 물어뜯는 사냥개입니다."
+      }
+    },
+    {
+      "id": "fire-magmole",
+      "name": { "en": "Magmole", "ko": "매그몰" },
+      "rarity": "common",
+      "traitId": "sturdy",
+      "growthCurveId": "steady",
+      "statBias": { "hp": 2, "defense": 1 },
+      "description": {
+        "en": "It stores heat underground and rises only when it is sure it can outlast the enemy.",
+        "ko": "땅속에 열을 저장해 두었다가, 상대보다 오래 버틸 수 있을 때만 고개를 드는 두더지입니다."
+      }
+    },
+    {
+      "id": "fire-pyrrake",
+      "name": { "en": "Pyrrake", "ko": "파이라크" },
+      "rarity": "epic",
+      "traitId": "assault",
+      "growthCurveId": "surge",
+      "statBias": { "hp": 1, "attack": 2 },
+      "description": {
+        "en": "A proud drake cub that believes every battle should end in one overwhelming blaze.",
+        "ko": "모든 싸움은 압도적인 화염 한 번으로 끝나야 한다고 믿는 어린 용암 드레이크입니다."
+      }
+    }
+  ]
+}

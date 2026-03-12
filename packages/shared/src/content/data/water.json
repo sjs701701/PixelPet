@@ -1,0 +1,101 @@
+{
+  "element": "water",
+  "pets": [
+    {
+      "id": "water-coralis",
+      "name": { "en": "Coralis", "ko": "코랄리스" },
+      "rarity": "common",
+      "traitId": "guardian",
+      "growthCurveId": "steady",
+      "statBias": { "defense": 2 },
+      "description": {
+        "en": "Its coral armor grows layer by layer, protecting allies with slow but unshakable poise.",
+        "ko": "산호 갑옷을 겹겹이 키워 느리지만 흔들림 없이 전열을 지키는 기사형 펫입니다."
+      }
+    },
+    {
+      "id": "water-tidera",
+      "name": { "en": "Tidera", "ko": "타이데라" },
+      "rarity": "common",
+      "traitId": "quickstep",
+      "growthCurveId": "sprinter",
+      "statBias": { "hp": 1, "speed": 2 },
+      "description": {
+        "en": "It slips through waves like a silver ribbon, always appearing where the guard is weakest.",
+        "ko": "은빛 리본처럼 물살을 타며, 가장 방심한 틈새로 흘러드는 수달입니다."
+      }
+    },
+    {
+      "id": "water-murkrab",
+      "name": { "en": "Murkrab", "ko": "머크랩" },
+      "rarity": "rare",
+      "traitId": "sturdy",
+      "growthCurveId": "late-bloomer",
+      "statBias": { "hp": 2, "defense": 2 },
+      "description": {
+        "en": "A patient crab from dark trenches that waits for pressure and pain to sharpen its resolve.",
+        "ko": "깊은 해구에서 올라온 게로, 압박과 상처를 버텨낼수록 의지가 더 단단해집니다."
+      }
+    },
+    {
+      "id": "water-glacquel",
+      "name": { "en": "Glacquel", "ko": "글래켈" },
+      "rarity": "rare",
+      "traitId": "focus",
+      "growthCurveId": "steady",
+      "statBias": { "hp": 1, "defense": 1, "speed": 1 },
+      "description": {
+        "en": "It stores cold in silence and releases it all at once in a precise burst.",
+        "ko": "고요히 냉기를 축적했다가 한순간에 정밀한 파동으로 쏟아내는 빙하 물범입니다."
+      }
+    },
+    {
+      "id": "water-nerefin",
+      "name": { "en": "Nerefin", "ko": "네레핀" },
+      "rarity": "rare",
+      "traitId": "finisher",
+      "growthCurveId": "surge",
+      "statBias": { "attack": 2, "speed": 1 },
+      "description": {
+        "en": "Once it smells weakness in the current, it never stops closing the gap.",
+        "ko": "물살 속 약한 흔적을 맡는 순간, 끝까지 거리를 좁혀 들어가는 추격 상어입니다."
+      }
+    },
+    {
+      "id": "water-drizzlep",
+      "name": { "en": "Drizzlep", "ko": "드리즐렙" },
+      "rarity": "common",
+      "traitId": "assault",
+      "growthCurveId": "steady",
+      "statBias": { "attack": 1, "speed": 1 },
+      "description": {
+        "en": "Small and cheerful, but every splash it makes hides a sharp sting of water pressure.",
+        "ko": "작고 경쾌하지만, 튀기는 물방울마다 날카로운 수압이 숨어 있는 비개구리입니다."
+      }
+    },
+    {
+      "id": "water-shellune",
+      "name": { "en": "Shellune", "ko": "셸룬" },
+      "rarity": "common",
+      "traitId": "guardian",
+      "growthCurveId": "late-bloomer",
+      "statBias": { "hp": 1, "defense": 2 },
+      "description": {
+        "en": "Its shell reflects moonlit tides, softening heavy blows into harmless ripples.",
+        "ko": "달빛 어린 파도를 등에 담아, 거센 충격을 잔물결처럼 흘려 보내는 거북입니다."
+      }
+    },
+    {
+      "id": "water-whalumi",
+      "name": { "en": "Whalumi", "ko": "웨일루미" },
+      "rarity": "epic",
+      "traitId": "sturdy",
+      "growthCurveId": "late-bloomer",
+      "statBias": { "hp": 3, "defense": 1 },
+      "description": {
+        "en": "A gentle giant in the making, carrying a calm sea inside its enormous frame.",
+        "ko": "커다란 몸 안에 고요한 바다를 품고 자라나는, 장대한 빛고래 새끼입니다."
+      }
+    }
+  ]
+}

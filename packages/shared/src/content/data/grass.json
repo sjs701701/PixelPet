@@ -1,0 +1,101 @@
+{
+  "element": "grass",
+  "pets": [
+    {
+      "id": "grass-bramblit",
+      "name": { "en": "Bramblit", "ko": "브램블릿" },
+      "rarity": "common",
+      "traitId": "assault",
+      "growthCurveId": "steady",
+      "statBias": { "attack": 2, "speed": 1 },
+      "description": {
+        "en": "It rolls forward in a burst of thorns, preferring bold charges over careful plans.",
+        "ko": "신중함보다 돌진을 좋아해, 가시를 세운 채 그대로 들이받는 고슴도치입니다."
+      }
+    },
+    {
+      "id": "grass-mossaur",
+      "name": { "en": "Mossaur", "ko": "모사우르" },
+      "rarity": "rare",
+      "traitId": "sturdy",
+      "growthCurveId": "late-bloomer",
+      "statBias": { "hp": 2, "defense": 1 },
+      "description": {
+        "en": "Covered in old moss and bark dust, it looks sleepy until a battle truly begins.",
+        "ko": "이끼와 나무 가루를 뒤집어쓴 채 느긋해 보이지만, 전투가 길어질수록 본색을 드러냅니다."
+      }
+    },
+    {
+      "id": "grass-petalyn",
+      "name": { "en": "Petalyn", "ko": "페탈린" },
+      "rarity": "rare",
+      "traitId": "focus",
+      "growthCurveId": "steady",
+      "statBias": { "hp": 1, "speed": 1 },
+      "description": {
+        "en": "Petals gather around its antlers before it releases a clean and elegant bloom strike.",
+        "ko": "뿔 끝에 꽃잎을 모았다가, 우아하고 정확한 개화 일격으로 풀어내는 꽃사슴입니다."
+      }
+    },
+    {
+      "id": "grass-vineroo",
+      "name": { "en": "Vineroo", "ko": "비너루" },
+      "rarity": "common",
+      "traitId": "quickstep",
+      "growthCurveId": "sprinter",
+      "statBias": { "speed": 2 },
+      "description": {
+        "en": "It bounds across roots and branches with spring-like legs that never seem to tire.",
+        "ko": "뿌리와 덩굴을 발판 삼아, 지치지 않는 탄력으로 연속 점프를 이어 가는 캥거루입니다."
+      }
+    },
+    {
+      "id": "grass-thornox",
+      "name": { "en": "Thornox", "ko": "쏜녹스" },
+      "rarity": "rare",
+      "traitId": "guardian",
+      "growthCurveId": "late-bloomer",
+      "statBias": { "attack": 1, "defense": 2 },
+      "description": {
+        "en": "A heavy forest beast that absorbs pressure and returns it with a rooted counterblow.",
+        "ko": "숲의 압박을 전신으로 받아내고, 땅을 박차는 반격으로 되돌려주는 중량형 들소입니다."
+      }
+    },
+    {
+      "id": "grass-bloombat",
+      "name": { "en": "Bloombat", "ko": "블룸뱃" },
+      "rarity": "common",
+      "traitId": "finisher",
+      "growthCurveId": "sprinter",
+      "statBias": { "attack": 1, "speed": 2 },
+      "description": {
+        "en": "It circles in silence until the target staggers, then dives like a sharpened petal.",
+        "ko": "소리 없이 선회하다가 상대가 흔들리는 순간, 날카로운 꽃잎처럼 급강하하는 박쥐입니다."
+      }
+    },
+    {
+      "id": "grass-rootail",
+      "name": { "en": "Rootail", "ko": "루테일" },
+      "rarity": "common",
+      "traitId": "quickstep",
+      "growthCurveId": "steady",
+      "statBias": { "attack": 1, "speed": 1 },
+      "description": {
+        "en": "Its tail works like a coiled root, letting it twist and dash through the smallest gap.",
+        "ko": "꼬리가 감긴 뿌리처럼 움직여, 아주 좁은 틈도 비집고 달려 나가는 다람쥐입니다."
+      }
+    },
+    {
+      "id": "grass-lotelope",
+      "name": { "en": "Lotelope", "ko": "로텔로프" },
+      "rarity": "epic",
+      "traitId": "focus",
+      "growthCurveId": "surge",
+      "statBias": { "hp": 1, "attack": 1, "speed": 2 },
+      "description": {
+        "en": "Calm on the surface, but once focused it can unleash a bloom of cutting wind and light.",
+        "ko": "겉보기엔 고요하지만, 집중하는 순간 빛과 바람이 섞인 개화 일섬을 터뜨리는 영양입니다."
+      }
+    }
+  ]
+}

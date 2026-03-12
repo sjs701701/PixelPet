@@ -1,0 +1,101 @@
+{
+  "element": "electric",
+  "pets": [
+    {
+      "id": "electric-glintar",
+      "name": { "en": "Glintar", "ko": "글린타르" },
+      "rarity": "common",
+      "traitId": "focus",
+      "growthCurveId": "steady",
+      "statBias": { "attack": 1, "defense": 1 },
+      "description": {
+        "en": "Its floating halo gathers static charge until it can fire a clean line of light.",
+        "ko": "머리 위 후광에 정전기를 모아, 곧게 뻗는 빛의 선으로 쏘아 보내는 메카 펫입니다."
+      }
+    },
+    {
+      "id": "electric-zappit",
+      "name": { "en": "Zappit", "ko": "재핏" },
+      "rarity": "common",
+      "traitId": "quickstep",
+      "growthCurveId": "sprinter",
+      "statBias": { "speed": 2 },
+      "description": {
+        "en": "Too quick for its own sparks, it outruns the crackle trailing behind its tail.",
+        "ko": "꼬리 뒤로 튀는 전기보다 더 빠르게 달려 나가는 전격 족제비입니다."
+      }
+    },
+    {
+      "id": "electric-volcrab",
+      "name": { "en": "Volcrab", "ko": "볼크랩" },
+      "rarity": "rare",
+      "traitId": "guardian",
+      "growthCurveId": "late-bloomer",
+      "statBias": { "hp": 1, "defense": 2 },
+      "description": {
+        "en": "Electric current runs through its shell, turning defense into a steady field of pressure.",
+        "ko": "등껍질로 전류를 흘려 보내며, 방어 자체를 지속적인 압박으로 바꾸는 전류 게입니다."
+      }
+    },
+    {
+      "id": "electric-ampson",
+      "name": { "en": "Ampson", "ko": "앰프슨" },
+      "rarity": "rare",
+      "traitId": "sturdy",
+      "growthCurveId": "late-bloomer",
+      "statBias": { "hp": 2, "defense": 1 },
+      "description": {
+        "en": "Its body hums like a giant speaker, and every impact makes the charge inside it swell.",
+        "ko": "거대한 스피커처럼 몸 전체가 울리며, 충격을 받을수록 안쪽 전하가 더 크게 증폭되는 들소입니다."
+      }
+    },
+    {
+      "id": "electric-fulgkit",
+      "name": { "en": "Fulgkit", "ko": "펄그킷" },
+      "rarity": "rare",
+      "traitId": "finisher",
+      "growthCurveId": "sprinter",
+      "statBias": { "attack": 1, "speed": 2 },
+      "description": {
+        "en": "It lounges like a sleepy cat, then snaps forward in a flash when prey falters.",
+        "ko": "늘어지게 쉬는 듯하다가도, 상대가 흔들리는 순간 번개처럼 튀어나오는 고양이입니다."
+      }
+    },
+    {
+      "id": "electric-raikrow",
+      "name": { "en": "Raikrow", "ko": "라이크로우" },
+      "rarity": "epic",
+      "traitId": "assault",
+      "growthCurveId": "surge",
+      "statBias": { "attack": 2, "speed": 1 },
+      "description": {
+        "en": "A sharp-eyed crow that turns every dive into a slicing streak of thunder.",
+        "ko": "예리한 눈으로 각을 재고, 급강하 하나하나를 천둥의 칼날처럼 바꾸는 까마귀입니다."
+      }
+    },
+    {
+      "id": "electric-coiloon",
+      "name": { "en": "Coiloon", "ko": "코일룬" },
+      "rarity": "common",
+      "traitId": "focus",
+      "growthCurveId": "steady",
+      "statBias": { "speed": 1, "defense": 1 },
+      "description": {
+        "en": "It winds current around itself with careful paws before launching a precise arc shot.",
+        "ko": "영리한 앞발로 전류를 감아 모았다가, 정확한 호 형태로 쏘아 보내는 너구리입니다."
+      }
+    },
+    {
+      "id": "electric-stromole",
+      "name": { "en": "Stromole", "ko": "스트로몰" },
+      "rarity": "common",
+      "traitId": "assault",
+      "growthCurveId": "steady",
+      "statBias": { "attack": 2, "defense": 1 },
+      "description": {
+        "en": "It digs beneath the field, storing charge until it can erupt from below with force.",
+        "ko": "필드 아래를 파고들며 전하를 쌓아 두었다가, 아래에서부터 강하게 폭발하듯 솟아오르는 두더지입니다."
+      }
+    }
+  ]
+}

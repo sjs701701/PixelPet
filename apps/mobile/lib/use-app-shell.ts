@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useMutation } from "@tanstack/react-query";
-import { PET_TEMPLATES } from "@pixel-pet-arena/shared";
+import { PET_TEMPLATES, getTemplateById } from "@pixel-pet-arena/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   acceptPetDeath,
@@ -522,14 +522,14 @@ export function useAppShellState() {
   ]);
 
   const petTemplate = useMemo(
-    () => PET_TEMPLATES.find((template) => template.id === pet?.templateId),
+    () => (pet?.templateId ? getTemplateById(pet.templateId) : undefined),
     [pet],
   );
   const homeShowcaseTemplate = useMemo(
-    () => petTemplate ?? PET_TEMPLATES.find((template) => template.id === "fire-1"),
+    () => petTemplate ?? PET_TEMPLATES[0],
     [petTemplate],
   );
-  const collectionPreview = useMemo(() => PET_TEMPLATES.slice(0, 8), []);
+  const collectionPreview = useMemo(() => PET_TEMPLATES, []);
 
   const loginStatus: LoginStatus = loginMutation.isPending
     ? "loading"
