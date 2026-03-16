@@ -353,30 +353,33 @@ All care values are clamped to `0..100`.
 
 ### 6.7 Tick Simulation And Neglect
 
-`1 tick = 2 hours`
+`1 tick = 10 minutes`
 
 At each tick:
 
 - neglect decay is applied
-- if the pet is `good` at tick start, it earns `+5 XP`
+- if the pet is `good` at tick start, it earns `+2 XP`
 
 Neglect decay per tick, free user:
 
-- `hunger -3.5`
-- `mood -3.5`
-- `hygiene -3.5`
-- `energy -3`
-- `bond -1.5`
+- `hunger -(3.5 / 12)`
+- `mood -(3.5 / 12)`
+- `hygiene -(3.5 / 12)`
+- `energy -(3 / 12)`
+- `bond -(1.5 / 12)`
 
 Neglect decay per tick, premium:
 
-- `hunger -2`
-- `mood -2`
-- `hygiene -2`
-- `energy -1.5`
-- `bond -0.5`
+- `hunger -(2 / 12)`
+- `mood -(2 / 12)`
+- `hygiene -(2 / 12)`
+- `energy -(1.5 / 12)`
+- `bond -(0.5 / 12)`
 
 Internal calculations allow decimals. The mobile UI rounds visible stat numbers.
+This keeps the total stat decay over 2 hours the same as before, while XP feedback appears much more often.
+
+When the app returns from the background and passive progression caused one or more level-ups, the home screen shows a single celebration modal summarizing the jump, for example `Lv.3 -> Lv.5`.
 
 ### 6.8 Life States
 

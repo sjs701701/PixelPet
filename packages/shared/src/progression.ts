@@ -9,9 +9,9 @@ import {
   PetTraitId,
 } from "./types";
 
-export const PROGRESSION_TICK_HOURS = 2;
+export const PROGRESSION_TICK_HOURS = 1 / 6;
 export const PROGRESSION_TICK_MS = PROGRESSION_TICK_HOURS * 60 * 60 * 1000;
-export const PASSIVE_XP_PER_GOOD_TICK = 5;
+export const PASSIVE_XP_PER_GOOD_TICK = 2;
 export const GOOD_AVERAGE_THRESHOLD = 75;
 export const CRITICAL_CORE_VALUE_THRESHOLD = 10;
 export const CRITICAL_CORE_AVERAGE_THRESHOLD = 40;
@@ -413,9 +413,9 @@ export function simulatePetProgress(
   return resolveLifeState(
     {
       ...current,
-      lastSimulatedAt: new Date(cappedEnd).toISOString(),
+      lastSimulatedAt: current.lastSimulatedAt,
     },
-    new Date(cappedEnd).toISOString(),
+    current.lastSimulatedAt,
   );
 }
 

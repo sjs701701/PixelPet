@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  PASSIVE_XP_PER_GOOD_TICK,
+  PROGRESSION_TICK_MS,
   DEFAULT_FREE_REVIVES,
   applyBattleAftermath,
   applyExperienceGain,
@@ -51,19 +53,60 @@ describe("pet progression", () => {
       },
     });
 
-    const progressed = simulatePetProgress(pet, "2026-03-10T04:00:00.000Z");
+    const progressed = simulatePetProgress(pet, "2026-03-10T00:10:00.000Z");
 
-    expect(progressed.experience).toBe(10);
+    expect(progressed.experience).toBe(2);
     expect(progressed.lifeState).toBe("good");
   });
 
   it("does not grant passive XP while the pet is merely alive", () => {
     const pet = createPet();
 
-    const progressed = simulatePetProgress(pet, "2026-03-10T04:00:00.000Z");
+    const progressed = simulatePetProgress(pet, "2026-03-10T00:10:00.000Z");
 
     expect(progressed.experience).toBe(0);
     expect(progressed.lifeState).toBe("alive");
+  });
+
+  it("uses a 10-minute tick and accelerated passive XP", () => {
+    expect(PROGRESSION_TICK_MS).toBe(10 * 60 * 1000);
+    expect(PASSIVE_XP_PER_GOOD_TICK).toBe(2);
+
+    const pet = createPet({
+      lifeState: "good",
+      careState: {
+        hunger: 90,
+        mood: 90,
+        hygiene: 90,
+        energy: 90,
+        bond: 90,
+      },
+    });
+
+    const progressed = simulatePetProgress(pet, "2026-03-10T02:00:00.000Z");
+
+    expect(progressed.experience).toBe(24);
+  });
+
+  it("accumulates partial elapsed time across repeated projections", () => {
+    const pet = createPet({
+      lifeState: "good",
+      careState: {
+        hunger: 90,
+        mood: 90,
+        hygiene: 90,
+        energy: 90,
+        bond: 90,
+      },
+    });
+
+    const fiveMinutes = simulatePetProgress(pet, "2026-03-10T00:05:00.000Z");
+    const tenMinutes = simulatePetProgress(fiveMinutes, "2026-03-10T00:10:00.000Z");
+
+    expect(fiveMinutes.experience).toBe(0);
+    expect(fiveMinutes.lastSimulatedAt).toBe("2026-03-10T00:00:00.000Z");
+    expect(tenMinutes.experience).toBe(2);
+    expect(tenMinutes.lastSimulatedAt).toBe("2026-03-10T00:10:00.000Z");
   });
 
   it("enters critical when a core stat gets too low and dies after 12 hours", () => {

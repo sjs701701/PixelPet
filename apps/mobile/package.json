@@ -7,7 +7,7 @@
     "dev": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "test": "npm run build --workspace @pixel-pet-arena/shared && vitest run lib/session-storage.test.ts lib/store.test.ts lib/pet-traits.test.ts lib/pet-life.test.ts lib/offline-pet.test.ts"
+    "test": "npm run build --workspace @pixel-pet-arena/shared && vitest run lib/session-storage.test.ts lib/store.test.ts lib/pet-traits.test.ts lib/pet-life.test.ts lib/offline-pet.test.ts lib/level-up.test.ts"
   },
   "dependencies": {
     "@expo/vector-icons": "^14.1.0",

@@ -12,6 +12,7 @@ const CARE_DELTA: Record<CareAction, Partial<CareState>> = {
   feed: {
     hunger: 14,
     mood: 2,
+    bond: 2,
   },
   clean: {
     hygiene: 16,
@@ -20,7 +21,7 @@ const CARE_DELTA: Record<CareAction, Partial<CareState>> = {
   play: {
     mood: 12,
     bond: 4,
-    energy: -10,
+    energy: -5,
   },
   rest: {
     energy: 18,
@@ -28,11 +29,14 @@ const CARE_DELTA: Record<CareAction, Partial<CareState>> = {
   },
 };
 
+// Temporary test tuning. Restore to 1 before production launch.
+const CARE_DURATION_SCALE = 0.1;
+
 export const CARE_ACTION_DURATION_MS: Record<CareAction, { free: number; premium: number }> = {
-  feed: { free: 20_000, premium: 15_000 },
-  clean: { free: 30_000, premium: 25_000 },
-  play: { free: 45_000, premium: 35_000 },
-  rest: { free: 60_000, premium: 45_000 },
+  feed: { free: 20_000 * CARE_DURATION_SCALE, premium: 15_000 * CARE_DURATION_SCALE },
+  clean: { free: 30_000 * CARE_DURATION_SCALE, premium: 25_000 * CARE_DURATION_SCALE },
+  play: { free: 45_000 * CARE_DURATION_SCALE, premium: 35_000 * CARE_DURATION_SCALE },
+  rest: { free: 60_000 * CARE_DURATION_SCALE, premium: 45_000 * CARE_DURATION_SCALE },
 };
 
 function clampCareValue(value: number) {
@@ -60,8 +64,8 @@ export function applyCareAction(
 
 export function applyNeglectDecay(careState: CareState, premiumAssist: boolean): CareState {
   const decay = premiumAssist
-    ? { hunger: 2, mood: 2, hygiene: 2, energy: 1.5, bond: 0.5 }
-    : { hunger: 3.5, mood: 3.5, hygiene: 3.5, energy: 3, bond: 1.5 };
+    ? { hunger: 2 / 12, mood: 2 / 12, hygiene: 2 / 12, energy: 1.5 / 12, bond: 0.5 / 12 }
+    : { hunger: 3.5 / 12, mood: 3.5 / 12, hygiene: 3.5 / 12, energy: 3 / 12, bond: 1.5 / 12 };
 
   return {
     hunger: clampCareValue(careState.hunger - decay.hunger),

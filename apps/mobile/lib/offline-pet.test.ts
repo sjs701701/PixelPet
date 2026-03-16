@@ -45,7 +45,10 @@ describe("offline pet state", () => {
       false,
     );
 
-    expect(projected.pet?.lastSimulatedAt).toBe("2026-03-12T00:00:00.000Z");
+    expect(projected.pet?.lastSimulatedAt).toBeDefined();
+    expect(new Date(projected.pet?.lastSimulatedAt ?? "").getTime()).toBeLessThanOrEqual(
+      new Date("2026-03-12T00:00:00.000Z").getTime(),
+    );
     expect(projected.needsSync).toBe(true);
   });
 

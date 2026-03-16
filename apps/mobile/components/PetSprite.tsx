@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { Image, StyleSheet, View } from "react-native";
 import {
   ElementType,
@@ -133,7 +133,7 @@ type PetSpriteProps = {
   size?: number;
 };
 
-export function PetSprite({
+export const PetSprite = memo(function PetSprite({
   element,
   name,
   templateId,
@@ -229,7 +229,9 @@ export function PetSprite({
       )}
     </View>
   );
-}
+});
+
+PetSprite.displayName = "PetSprite";
 
 const styles = StyleSheet.create({
   wrapper: {

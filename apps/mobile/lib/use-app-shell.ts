@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useMutation } from "@tanstack/react-query";
 import { PET_TEMPLATES, getTemplateById } from "@pixel-pet-arena/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AppState } from "react-native";
 import {
   acceptPetDeath,
   ApiError,
@@ -35,18 +36,21 @@ import {
   projectLocalPetState,
   readLocalPetState,
 } from "./offline-pet";
+import { createLevelUpCelebration, LevelUpCelebration } from "./level-up";
 import { AppLanguage, useSessionStore } from "./store";
 
 const LANGUAGE_KEY = "pixelpet.language";
 const SPLASH_MS = 1200;
 const RESTORE_MS = 350;
 const SYNC_RETRY_MS = 30_000;
+const ACTIVE_PROJECTION_INTERVAL_MS = 5_000;
 
 export type StartupPhase = "splash" | "restore" | "login" | "app";
 export type TabKey = "home" | "battle" | "collection" | "profile";
 export type LoginStatus = "idle" | "loading" | "error";
 export type ProfileSessionState = "active" | "signed-out";
 export type ProfileSaveState = "local-only" | "not-ready";
+export type PendingLevelUpCelebration = LevelUpCelebration;
 
 function isUnauthorizedError(error: unknown) {
   return error instanceof ApiError && error.status === 401;
@@ -70,7 +74,10 @@ export function useAppShellState() {
   const [syncError, setSyncError] = useState<unknown>(null);
   const [syncPending, setSyncPending] = useState(false);
   const [localPetState, setLocalPetState] = useState<LocalPetState | undefined>();
+  const [pendingLevelUpCelebration, setPendingLevelUpCelebration] = useState<PendingLevelUpCelebration | undefined>();
   const localPetStateRef = useRef<LocalPetState | undefined>(undefined);
+  const lastCelebratedLevelUpKeyRef = useRef<string | undefined>(undefined);
+  const previousTabRef = useRef<TabKey>("home");
   const { user, token, pet, language, setSession, setPet, setLanguage, clearSession } =
     useSessionStore();
 
@@ -78,6 +85,14 @@ export function useAppShellState() {
     localPetStateRef.current = localPetState;
     setSyncPending(hasPendingPetSync(localPetState));
   }, [localPetState]);
+
+  useEffect(() => {
+    if (localPetState?.pet) {
+      return;
+    }
+
+    setPendingLevelUpCelebration(undefined);
+  }, [localPetState?.pet]);
 
   const premiumAssist = user?.premiumStatus === "premium";
 
@@ -101,6 +116,25 @@ export function useAppShellState() {
     }
     return projected;
   }, [commitLocalPetState, premiumAssist]);
+
+  const queueLevelUpCelebration = useCallback((
+    beforeState: LocalPetState | undefined,
+    afterState: LocalPetState | undefined,
+  ) => {
+    const celebration = createLevelUpCelebration({
+      petId: afterState?.pet?.id,
+      beforeLevel: beforeState?.pet?.level,
+      afterLevel: afterState?.pet?.level,
+      lastSimulatedAt: afterState?.pet?.lastSimulatedAt,
+    });
+
+    if (!celebration || lastCelebratedLevelUpKeyRef.current === celebration.key) {
+      return;
+    }
+
+    lastCelebratedLevelUpKeyRef.current = celebration.key;
+    setPendingLevelUpCelebration(celebration);
+  }, []);
 
   const syncLocalPetState = useCallback(async (now: Date | string = new Date()) => {
     if (!token) {
@@ -318,6 +352,70 @@ export function useAppShellState() {
     return () => clearInterval(interval);
   }, [localPetState, offlineMode, startupPhase, syncLocalPetState, token]);
 
+  useEffect(() => {
+    if (startupPhase !== "app" || !localPetStateRef.current?.pet) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      const beforeState = localPetStateRef.current;
+
+      projectCurrentLocalPet(new Date())
+        .then((afterState) => {
+          queueLevelUpCelebration(beforeState, afterState);
+        })
+        .catch(() => undefined);
+    }, ACTIVE_PROJECTION_INTERVAL_MS);
+
+    return () => clearInterval(interval);
+  }, [localPetState?.pet?.id, projectCurrentLocalPet, queueLevelUpCelebration, startupPhase]);
+
+  useEffect(() => {
+    if (startupPhase !== "app") {
+      return;
+    }
+
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState !== "active") {
+        return;
+      }
+
+      const beforeState = localPetStateRef.current;
+      projectCurrentLocalPet(new Date())
+        .then((afterState) => {
+          queueLevelUpCelebration(beforeState, afterState);
+
+          if (!offlineMode && token && afterState) {
+            syncLocalPetState(new Date()).catch(() => undefined);
+          }
+        })
+        .catch(() => undefined);
+    });
+
+    return () => subscription.remove();
+  }, [offlineMode, projectCurrentLocalPet, queueLevelUpCelebration, startupPhase, syncLocalPetState, token]);
+
+  useEffect(() => {
+    if (startupPhase !== "app") {
+      previousTabRef.current = tab;
+      return;
+    }
+
+    const previousTab = previousTabRef.current;
+    previousTabRef.current = tab;
+
+    if (tab !== "home" || previousTab === "home") {
+      return;
+    }
+
+    const beforeState = localPetStateRef.current;
+    projectCurrentLocalPet(new Date())
+      .then((afterState) => {
+        queueLevelUpCelebration(beforeState, afterState);
+      })
+      .catch(() => undefined);
+  }, [projectCurrentLocalPet, queueLevelUpCelebration, startupPhase, tab]);
+
   const loginMutation = useMutation({
     mutationFn: async () => {
       const installId = await getOrCreateInstallId();
@@ -499,6 +597,8 @@ export function useAppShellState() {
     setPremiumDevEnabled(false);
     setOfflineMode(false);
     setSyncError(null);
+    setPendingLevelUpCelebration(undefined);
+    lastCelebratedLevelUpKeyRef.current = undefined;
     loginMutation.reset();
     firstPetMutation.reset();
     reviveMutation.reset();
@@ -572,6 +672,7 @@ export function useAppShellState() {
     syncPending,
     syncErrorMessage: syncError ? getFriendlyApiErrorMessage(syncError, language) : undefined,
     timeIntegrity: localPetState?.timeIntegrity ?? "ok",
+    pendingLevelUpCelebration,
     handleLogin: () => loginMutation.mutate(),
     handleLogout,
     handleRefreshPet,
@@ -582,5 +683,6 @@ export function useAppShellState() {
     handleAcceptDeath: () => acceptDeathMutation.mutateAsync(),
     handleQueue: () => queueMutation.mutate(),
     resetQueue: () => queueMutation.reset(),
+    dismissLevelUpCelebration: () => setPendingLevelUpCelebration(undefined),
   };
 }

@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useFonts } from "expo-font";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Animated, AppState, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Animated, AppState, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import {
   BaseStats,
   CareAction,
@@ -14,6 +14,11 @@ import {
   PetLifeState,
   PetTraitId,
   TimeIntegrityState,
+  BATTLE_LOSS_XP,
+  BATTLE_WIN_XP,
+  MAX_LEVEL,
+  PASSIVE_XP_PER_GOOD_TICK,
+  PROGRESSION_TICK_HOURS,
   getBattleStatBlock,
   getElementAdvantageTier,
   getCareActionDurationMs,
@@ -23,6 +28,7 @@ import {
   getLocalizedTemplateName,
 } from "@pixel-pet-arena/shared";
 import { PetSprite } from "./components/PetSprite";
+import { PetThumbnail } from "./components/PetThumbnail";
 import { PixelCard } from "./components/PixelCard";
 import { PixelIcon } from "./components/PixelIcon";
 import { getCopy, getElementLabel } from "./lib/i18n";
@@ -35,6 +41,7 @@ import {
 import { AppLanguage, useSessionStore } from "./lib/store";
 import {
   LoginStatus,
+  PendingLevelUpCelebration,
   ProfileSaveState,
   ProfileSessionState,
   TabKey,
@@ -150,9 +157,9 @@ function AppShell() {
     premiumTogglePending,
     premiumErrorMessage,
     offlineMode,
-    syncPending,
     syncErrorMessage,
     timeIntegrity,
+    pendingLevelUpCelebration,
     handleLogin,
     handleLogout,
     handleRefreshPet,
@@ -163,6 +170,7 @@ function AppShell() {
     handleAcceptDeath,
     handleQueue,
     resetQueue,
+    dismissLevelUpCelebration,
   } = useAppShellState();
   const t = getCopy(language);
   const [dismissedDangerKey, setDismissedDangerKey] = useState<string>();
@@ -299,89 +307,93 @@ function AppShell() {
     );
   }
 
+  const nonCollectionContent = (
+    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      {tab === "home" ? (
+        <HomeTab
+          petId={pet?.id}
+          petTemplateId={homeShowcaseTemplate?.id}
+          petTemplateName={homeShowcaseTemplate ? getLocalizedTemplateName(homeShowcaseTemplate, language) : undefined}
+          petNickname={pet?.nickname}
+          petTemplateElement={homeShowcaseTemplate?.element}
+          petBaseStats={homeShowcaseTemplate?.baseStats}
+          petTraitId={homeShowcaseTemplate?.traitId}
+          petGrowthCurveId={homeShowcaseTemplate?.growthCurveId}
+          petFlavorText={homeShowcaseTemplate ? getLocalizedTemplateFlavorText(homeShowcaseTemplate, language) : undefined}
+          petLifeState={pet?.lifeState}
+          petCriticalSince={pet?.criticalSince}
+          petFreeRevivesRemaining={pet?.freeRevivesRemaining}
+          petLevel={pet?.level}
+          petExp={pet?.experience}
+          pendingLevelUpCelebration={pendingLevelUpCelebration}
+          careState={pet?.careState}
+          offlineMode={offlineMode}
+          syncErrorMessage={syncErrorMessage}
+          dangerPopupKey={dangerPopupKey}
+          dismissedDangerKey={dismissedDangerKey}
+          firstPetPending={firstPetPending}
+          firstPetErrorMessage={firstPetErrorMessage}
+          carePending={carePending}
+          revivePending={revivePending}
+          acceptDeathPending={acceptDeathPending}
+          activeCareTask={activeCareTask}
+          onDismissDangerPopup={(key) => setDismissedDangerKey(key)}
+          onGetFirstPet={handleGetFirstPet}
+          onStartCare={handleStartCare}
+          onRevive={handleRevivePet}
+          onAcceptDeath={handleAcceptDeath}
+          onDismissLevelUpCelebration={dismissLevelUpCelebration}
+        />
+      ) : null}
+      {tab === "battle" ? (
+        <BattleTab
+          petTemplateName={petTemplate ? getLocalizedTemplateName(petTemplate, language) : undefined}
+          petTemplateElement={petTemplate?.element}
+          petTemplateId={petTemplate?.id}
+          petLifeState={pet?.lifeState}
+          petLevel={pet?.level}
+          offlineMode={offlineMode}
+          syncPending={false}
+          syncErrorMessage={syncErrorMessage}
+          timeIntegrity={timeIntegrity}
+          queuePending={queuePending}
+          queueResult={queueResult}
+          onRefreshPet={handleRefreshPet}
+          onQueue={handleQueue}
+          onResetQueue={resetQueue}
+          token={token}
+          userId={user?.id}
+        />
+      ) : null}
+      {tab === "profile" ? (
+        <ProfileTab
+          onLanguageChange={setLanguage}
+          onLogout={handleLogout}
+          apiSummary={apiSummary}
+          userName={user?.displayName}
+          provider={user?.loginProvider}
+          premiumStatus={user?.premiumStatus}
+          premiumDevEnabled={premiumDevEnabled}
+          premiumTogglePending={premiumTogglePending}
+          premiumErrorMessage={premiumErrorMessage}
+          sessionState={profileSessionState}
+          saveState={profileSaveState}
+          onTogglePremiumDev={handleTogglePremiumDev}
+        />
+      ) : null}
+      <View style={styles.bottomSpacer} />
+    </ScrollView>
+  );
+
   return (
     <View style={[styles.page, { backgroundColor: c.bg }]}>
       <StatusBar style={mode === "dark" ? "light" : "dark"} />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          {tab === "home" ? (
-            <HomeTab
-              petId={pet?.id}
-              petTemplateId={homeShowcaseTemplate?.id}
-              petTemplateName={homeShowcaseTemplate ? getLocalizedTemplateName(homeShowcaseTemplate, language) : undefined}
-              petNickname={pet?.nickname}
-              petTemplateElement={homeShowcaseTemplate?.element}
-              petBaseStats={homeShowcaseTemplate?.baseStats}
-              petTraitId={homeShowcaseTemplate?.traitId}
-              petGrowthCurveId={homeShowcaseTemplate?.growthCurveId}
-              petFlavorText={homeShowcaseTemplate ? getLocalizedTemplateFlavorText(homeShowcaseTemplate, language) : undefined}
-              petLifeState={pet?.lifeState}
-              petCriticalSince={pet?.criticalSince}
-              petFreeRevivesRemaining={pet?.freeRevivesRemaining}
-            petLevel={pet?.level}
-            petExp={pet?.experience}
-            careState={pet?.careState}
-            offlineMode={offlineMode}
-            syncPending={syncPending}
-            syncErrorMessage={syncErrorMessage}
-            dangerPopupKey={dangerPopupKey}
-            dismissedDangerKey={dismissedDangerKey}
-            firstPetPending={firstPetPending}
-            firstPetErrorMessage={firstPetErrorMessage}
-            carePending={carePending}
-            revivePending={revivePending}
-            acceptDeathPending={acceptDeathPending}
-            activeCareTask={activeCareTask}
-            onDismissDangerPopup={(key) => setDismissedDangerKey(key)}
-            onGetFirstPet={handleGetFirstPet}
-            onStartCare={handleStartCare}
-            onRevive={handleRevivePet}
-            onAcceptDeath={handleAcceptDeath}
-          />
-          ) : null}
-          {tab === "battle" ? (
-            <BattleTab
-              petTemplateName={petTemplate ? getLocalizedTemplateName(petTemplate, language) : undefined}
-              petTemplateElement={petTemplate?.element}
-              petTemplateId={petTemplate?.id}
-              petLifeState={pet?.lifeState}
-            petLevel={pet?.level}
-            offlineMode={offlineMode}
-            syncPending={syncPending}
-            syncErrorMessage={syncErrorMessage}
-            timeIntegrity={timeIntegrity}
-            queuePending={queuePending}
-            queueResult={queueResult}
-            onRefreshPet={handleRefreshPet}
-            onQueue={handleQueue}
-            onResetQueue={resetQueue}
-            token={token}
-            userId={user?.id}
-          />
-        ) : null}
-        {tab === "collection" ? (
-          <CollectionTab
-            currentTemplateId={pet?.templateId}
-            collectionPreview={collectionPreview}
-          />
-        ) : null}
-        {tab === "profile" ? (
-          <ProfileTab
-            onLanguageChange={setLanguage}
-            onLogout={handleLogout}
-            apiSummary={apiSummary}
-            userName={user?.displayName}
-            provider={user?.loginProvider}
-            premiumStatus={user?.premiumStatus}
-            premiumDevEnabled={premiumDevEnabled}
-            premiumTogglePending={premiumTogglePending}
-            premiumErrorMessage={premiumErrorMessage}
-            sessionState={profileSessionState}
-            saveState={profileSaveState}
-            onTogglePremiumDev={handleTogglePremiumDev}
-          />
-        ) : null}
-        <View style={styles.bottomSpacer} />
-      </ScrollView>
+      {tab === "collection" ? (
+        <CollectionTab
+          currentTemplateId={pet?.templateId}
+          collectionPreview={collectionPreview}
+        />
+      ) : nonCollectionContent}
       <View style={[styles.tabDock, { backgroundColor: c.bg, borderTopColor: c.divider }]}>
         {tabs.map((item) => {
           const active = item.key === tab;
@@ -532,9 +544,9 @@ function HomeTab({
   petFreeRevivesRemaining,
   petLevel,
   petExp,
+  pendingLevelUpCelebration,
   careState,
   offlineMode,
-  syncPending,
   syncErrorMessage,
   dangerPopupKey,
   dismissedDangerKey,
@@ -549,6 +561,7 @@ function HomeTab({
   onStartCare,
   onRevive,
   onAcceptDeath,
+  onDismissLevelUpCelebration,
 }: {
   petId?: string;
   petTemplateId?: string;
@@ -564,9 +577,9 @@ function HomeTab({
   petFreeRevivesRemaining?: number;
   petLevel?: number;
   petExp?: number;
+  pendingLevelUpCelebration?: PendingLevelUpCelebration;
   careState?: CareState;
   offlineMode: boolean;
-  syncPending: boolean;
   syncErrorMessage?: string;
   dangerPopupKey?: string;
   dismissedDangerKey?: string;
@@ -581,6 +594,7 @@ function HomeTab({
   onStartCare: (action: CareAction) => void;
   onRevive: () => Promise<unknown>;
   onAcceptDeath: () => Promise<unknown>;
+  onDismissLevelUpCelebration: () => void;
 }) {
   const { c } = useTheme();
   const { language } = useSessionStore();
@@ -588,6 +602,7 @@ function HomeTab({
   const hasPet = Boolean(petTemplateName && petTemplateElement && careState);
   const [nicknameOpen, setNicknameOpen] = useState(false);
   const [traitInfoOpen, setTraitInfoOpen] = useState(false);
+  const [levelInfoOpen, setLevelInfoOpen] = useState(false);
   const [dangerModalOpen, setDangerModalOpen] = useState(false);
   const [dangerNow, setDangerNow] = useState(() => new Date());
   const [nicknameDraft, setNicknameDraft] = useState("");
@@ -603,6 +618,12 @@ function HomeTab({
   );
   const dangerState = petLifeState === "critical" || petLifeState === "dead";
   const requiredExp = getExpRequiredForLevel(petLevel ?? 0);
+  const levelGuideMaxLabel = language === "ko" ? "최대 레벨" : "max level";
+  const levelGuideTitle = language === "ko" ? "레벨 안내" : "level guide";
+  const levelGuideCurrentLabel = language === "ko" ? "현재 레벨" : "current level";
+  const levelGuideNeedLabel = language === "ko" ? "다음 레벨 필요 XP" : "xp needed for next level";
+  const levelGuideGainLabel = language === "ko" ? "레벨 올리는 방법" : "how to level up";
+  const levelGuideBandLabel = language === "ko" ? "레벨 구간" : "xp bands";
   const petLifeCopy = getPetLifeCopy(language, petLifeState ?? "alive");
   const traitCopy = getTraitCopy(language, petTraitId);
   const statSectionTitle = language === "ko" ? "기본 전투 스탯" : "base battle stats";
@@ -614,6 +635,11 @@ function HomeTab({
   const paidReviveLabel = language === "ko" ? "유료 부활 예정" : "paid revive later";
   const remainingReviveLabel = language === "ko" ? "남은 무료 부활권" : "free revives left";
   const timeLeftLabel = language === "ko" ? "사망까지" : "time to death";
+  const levelUpTitle = language === "ko" ? "레벨 업!" : "Level Up!";
+  const levelUpBody = `Lv. ${pendingLevelUpCelebration?.fromLevel ?? 0} -> Lv. ${pendingLevelUpCelebration?.toLevel ?? 0}`;
+  const levelUpSummary = language === "ko"
+    ? "축하합니다! 더 강한 스테이지와 스탯을 사용할 수 있게 되었어요."
+    : "Congratulations! Your pet can now use stronger stages and stats.";
   const previewStats = useMemo(() => {
     if (!petBaseStats || !petTraitId || !petGrowthCurveId) {
       return undefined;
@@ -634,6 +660,50 @@ function HomeTab({
     { key: "defense", label: "DEF", value: previewStats?.defense ?? 0 },
     { key: "speed", label: "SPD", value: previewStats?.speed ?? 0 },
   ];
+  const levelGuideLines = language === "ko"
+    ? [
+        `1. 5개 상태값 평균이 75 이상인 good 상태를 유지하면 ${PROGRESSION_TICK_HOURS}시간마다 XP가 ${PASSIVE_XP_PER_GOOD_TICK}씩 오릅니다.`,
+        `2. 배틀에서도 XP를 얻습니다. 승리 +${BATTLE_WIN_XP}, 패배 +${BATTLE_LOSS_XP}.`,
+        "3. 상태가 나쁘면 경험치가 오르지 않으니 배고픔, 기분, 청결, 에너지, 유대감을 잘 관리해야 합니다.",
+        "4. Lv.0에서 Lv.1은 30 XP가 필요하고, 이후 레벨이 올라갈수록 필요 XP가 늘어납니다.",
+      ]
+    : [
+        `1. Keep the pet in a good state with a 75+ average across all 5 care stats to earn ${PASSIVE_XP_PER_GOOD_TICK} XP every ${PROGRESSION_TICK_HOURS} hours.`,
+        `2. Battles also grant XP. Win +${BATTLE_WIN_XP}, lose +${BATTLE_LOSS_XP}.`,
+        "3. Bad condition stops passive XP, so keep hunger, mood, hygiene, energy, and bond healthy.",
+      ];
+
+  const displayedLevelGuideLines = language === "ko"
+    ? [
+        "1. 5개 상태값의 평균을 75이상으로 일정시간 유지하면 경험치가 쌓입니다.",
+        `2. 배틀에서도 XP를 얻습니다. 승리 +${BATTLE_WIN_XP}, 패배 +${BATTLE_LOSS_XP}.`,
+        "3. 상태가 나쁘면 경험치가 오르지 않으니 배고픔, 기분, 청결, 에너지, 유대감을 잘 관리해 주세요.",
+      ]
+    : levelGuideLines.slice(0, 3);
+
+  const displayedLevelGuideLinesResolved = language === "ko"
+    ? [
+        "1. 5개 상태값의 평균을 75이상으로 일정시간 유지하면 경험치가 쌓입니다.",
+        `2. 배틀에서도 XP를 얻습니다. 승리 +${BATTLE_WIN_XP}, 패배 +${BATTLE_LOSS_XP}.`,
+        "3. 상태가 나쁘면 경험치가 오르지 않으니 배고픔, 기분, 청결, 에너지, 유대감을 잘 관리해 주세요.",
+      ]
+    : [
+        `1. Keep the pet in a good state with a 75+ average across all 5 care stats to earn ${PASSIVE_XP_PER_GOOD_TICK} XP every 10 minutes.`,
+        `2. Battles also grant XP. Win +${BATTLE_WIN_XP}, lose +${BATTLE_LOSS_XP}.`,
+        "3. Bad condition stops passive XP, so keep hunger, mood, hygiene, energy, and bond healthy.",
+      ];
+  const dangerBlocksLevelUp =
+    dangerState &&
+    Boolean(dangerPopupKey) &&
+    dismissedDangerKey !== dangerPopupKey;
+  const levelUpModalVisible = Boolean(
+    pendingLevelUpCelebration &&
+    !traitInfoOpen &&
+    !levelInfoOpen &&
+    !nicknameOpen &&
+    !dangerModalOpen &&
+    !dangerBlocksLevelUp,
+  );
 
   function handleOpenNickname() { setNicknameInputKey((v) => v + 1); setNicknameOpen(true); }
   function handleCancelNickname() {
@@ -667,18 +737,24 @@ function HomeTab({
   }, [hasTraitInfo]);
 
   useEffect(() => {
+    if (!hasPet) {
+      setLevelInfoOpen(false);
+    }
+  }, [hasPet]);
+
+  useEffect(() => {
     if (!dangerState) {
       setDangerModalOpen(false);
       return;
     }
 
-    if (traitInfoOpen || nicknameOpen || !dangerPopupKey || dismissedDangerKey === dangerPopupKey) {
+    if (traitInfoOpen || levelInfoOpen || nicknameOpen || !dangerPopupKey || dismissedDangerKey === dangerPopupKey) {
       return;
     }
 
     setDangerNow(new Date());
     setDangerModalOpen(true);
-  }, [dangerPopupKey, dangerState, dismissedDangerKey, nicknameOpen, traitInfoOpen]);
+  }, [dangerPopupKey, dangerState, dismissedDangerKey, levelInfoOpen, nicknameOpen, traitInfoOpen]);
 
   useEffect(() => {
     if (!dangerModalOpen || petLifeState !== "critical") {
@@ -749,7 +825,21 @@ function HomeTab({
                 <Text style={[styles.metaValue, { color: c.text }]}>{petNickname}</Text>
               </>
             ) : null}
-            <Text style={[styles.metaValueBold, { color: c.text, marginTop: 14 }]}>Lv. {petLevel ?? 0}</Text>
+            <View style={[styles.metaLabelRow, { marginTop: 14 }]}>
+              <Text style={[styles.metaValueBold, { color: c.text }]}>Lv. {petLevel ?? 0}</Text>
+              {hasPet ? (
+                <Pressable
+                  testID="pet-level-info-button"
+                  style={({ pressed }) => [styles.infoButton, { borderColor: c.divider }, pressed && { backgroundColor: c.text }]}
+                  hitSlop={8}
+                  onPress={() => setLevelInfoOpen(true)}
+                >
+                  {({ pressed }) => (
+                    <Text style={[styles.infoButtonText, { color: pressed ? c.bg : c.text }]}>?</Text>
+                  )}
+                </Pressable>
+              ) : null}
+            </View>
             <DotExpBar value={petExp ?? 0} maxValue={requiredExp} />
             <View style={styles.petStatusRow}>
               {offlineMode ? (
@@ -757,7 +847,7 @@ function HomeTab({
                   {language === "ko" ? "OFFLINE" : "OFFLINE"}
                 </Text>
               ) : null}
-              {syncPending ? (
+              {false ? (
                 <Text style={[styles.statusChip, { color: c.gray, borderColor: c.divider }]}>
                   {language === "ko" ? "동기화 대기" : "SYNC PENDING"}
                 </Text>
@@ -844,11 +934,11 @@ function HomeTab({
       )}
 
       {/* Section 2 — Status Bars */}
-      <Modal
-        visible={traitInfoOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setTraitInfoOpen(false)}
+        <Modal
+          visible={traitInfoOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setTraitInfoOpen(false)}
       >
         <Pressable style={styles.modalOverlay} onPress={() => setTraitInfoOpen(false)}>
           <Pressable
@@ -897,12 +987,82 @@ function HomeTab({
                 <Text style={[styles.modalButtonText, { color: inv ? c.bg : c.text }]}>{closeLabel}</Text>
               )}
             </FlickerButton>
+            </Pressable>
           </Pressable>
-        </Pressable>
-      </Modal>
+        </Modal>
 
-      <Modal
-        visible={dangerModalOpen}
+        <Modal
+          visible={levelInfoOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setLevelInfoOpen(false)}
+        >
+          <Pressable style={styles.modalOverlay} onPress={() => setLevelInfoOpen(false)}>
+            <Pressable
+              testID="pet-level-modal"
+              style={[styles.modalBox, { backgroundColor: c.bg, borderColor: c.divider }]}
+              onPress={(event) => event.stopPropagation()}
+            >
+              <Text style={[styles.traitModalTitle, { color: c.text }]}>{levelGuideTitle}</Text>
+              <View style={styles.modalInfoBlock}>
+                <Text style={[styles.modalSectionLabel, { color: c.grayDark }]}>{levelGuideCurrentLabel}</Text>
+                <Text style={[styles.traitName, { color: c.text }]}>Lv. {petLevel ?? 0}</Text>
+                <Text style={[styles.traitSummary, { color: c.gray }]}>
+                  {levelGuideMaxLabel}: Lv. {MAX_LEVEL}
+                </Text>
+              </View>
+              <View style={styles.modalInfoBlock}>
+                <Text style={[styles.modalSectionLabel, { color: c.grayDark }]}>{levelGuideGainLabel}</Text>
+                {displayedLevelGuideLinesResolved.map((line) => (
+                  <Text key={line} style={[styles.traitSummary, { color: c.gray }]}>
+                    {line}
+                  </Text>
+                ))}
+              </View>
+              <FlickerButton
+                testID="pet-level-modal-close"
+                style={[styles.modalButtonSingle, { borderColor: c.divider }]}
+                onPress={() => setLevelInfoOpen(false)}
+              >
+                {(inv) => (
+                  <Text style={[styles.modalButtonText, { color: inv ? c.bg : c.text }]}>{closeLabel}</Text>
+                )}
+              </FlickerButton>
+            </Pressable>
+          </Pressable>
+        </Modal>
+
+        <Modal
+          visible={levelUpModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={onDismissLevelUpCelebration}
+        >
+          <Pressable style={styles.modalOverlay} onPress={onDismissLevelUpCelebration}>
+            <Pressable
+              style={[styles.modalBox, { backgroundColor: c.bg, borderColor: c.divider }]}
+              onPress={(event) => event.stopPropagation()}
+            >
+              <Text style={[styles.modalTitle, { color: c.text }]}>{levelUpTitle}</Text>
+              <Text style={[styles.traitName, { color: c.text, textAlign: "center" }]}>{levelUpBody}</Text>
+              <Text style={[styles.modalSubtitle, { color: c.gray }]}>{levelUpSummary}</Text>
+              <FlickerButton
+                testID="pet-level-up-modal-close"
+                style={[styles.modalButtonSingle, { borderColor: c.divider }]}
+                onPress={onDismissLevelUpCelebration}
+              >
+                {(inv) => (
+                  <Text style={[styles.modalButtonText, { color: inv ? c.bg : c.text }]}>
+                    {language === "ko" ? "확인" : "ok"}
+                  </Text>
+                )}
+              </FlickerButton>
+            </Pressable>
+          </Pressable>
+        </Modal>
+
+        <Modal
+          visible={dangerModalOpen}
         transparent
         animationType="fade"
         onRequestClose={handleCloseDangerModal}
@@ -1494,7 +1654,7 @@ function BattleTab({
               : "Battles are only available while connected to the internet."}
           </Text>
         ) : null}
-        {!battleLocked && !offlineMode && syncPending ? (
+        {false ? (
           <Text style={[styles.battleMuted, { color: c.gray }]}>
             {language === "ko"
               ? "배틀 시작 전에 로컬 펫 상태를 서버와 동기화합니다."
@@ -1674,30 +1834,47 @@ function CollectionTab({
   const { c } = useTheme();
   const { language } = useSessionStore();
   const t = getCopy(language);
-  return (
-    <>
+
+  const renderItem = useCallback(({ item: template }: { item: typeof PET_TEMPLATES[number] }) => {
+    const active = template.id === currentTemplateId;
+    const localizedName = getLocalizedTemplateName(template, language);
+
+    return (
+      <View style={[styles.collectionItem, { borderBottomColor: active ? c.text : c.divider }]}>
+        <PetThumbnail
+          element={template.element}
+          name={localizedName}
+          templateId={template.id}
+        />
+        <Text style={[styles.collectionName, { color: c.text }]}>{localizedName}</Text>
+        <Text style={[styles.collectionMeta, { color: c.grayDark }]}>{t.common.rarity[template.rarity]}</Text>
+      </View>
+    );
+  }, [c.divider, c.grayDark, c.text, currentTemplateId, language, t.common.rarity]);
+
+  const listHeader = useMemo(() => (
+    <View style={styles.collectionHeader}>
       <Text style={[styles.sectionTitle, { color: c.text }]}>{t.collection.title}</Text>
       <Text style={[styles.bodyMuted, { color: c.gray }]}>{t.collection.body}</Text>
-        <View style={styles.collectionGrid}>
-          {collectionPreview.map((template) => {
-            const active = template.id === currentTemplateId;
-            const localizedName = getLocalizedTemplateName(template, language);
-            return (
-              <View key={template.id} style={[styles.collectionItem, { borderBottomColor: active ? c.text : c.divider }]}>
-                <PetSprite
-                  element={template.element}
-                name={getElementLabel(language, template.element)}
-                templateId={template.id}
-                stage={1}
-                size={7}
-                />
-                <Text style={[styles.collectionName, { color: c.text }]}>{localizedName}</Text>
-                <Text style={[styles.collectionMeta, { color: c.grayDark }]}>{t.common.rarity[template.rarity]}</Text>
-              </View>
-            );
-          })}
-        </View>
-    </>
+    </View>
+  ), [c.gray, c.text, t.collection.body, t.collection.title]);
+
+  return (
+    <FlatList
+      data={collectionPreview}
+      keyExtractor={(template) => template.id}
+      renderItem={renderItem}
+      numColumns={2}
+      contentContainerStyle={styles.collectionListContent}
+      columnWrapperStyle={styles.collectionRow}
+      ListHeaderComponent={listHeader}
+      ListFooterComponent={<View style={styles.bottomSpacer} />}
+      initialNumToRender={12}
+      maxToRenderPerBatch={12}
+      windowSize={5}
+      removeClippedSubviews
+      showsVerticalScrollIndicator={false}
+    />
   );
 }
 
@@ -1990,7 +2167,14 @@ const styles = StyleSheet.create({
   bodyMuted: { fontSize: 9, fontFamily: FONT, lineHeight: 20 },
 
   petInfoRow: { flexDirection: "row", minHeight: 240 },
-  petImageArea: { width: "70%", justifyContent: "center", alignItems: "center", paddingVertical: 40 },
+  petImageArea: {
+    width: "70%",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 40,
+    borderWidth: 1,
+    borderColor: "#ff3b30",
+  },
   petImageBorder: { position: "absolute", bottom: 0, left: 0, right: 0, height: 2 },
   petMetaArea: { width: "30%", paddingLeft: 16, justifyContent: "center", gap: 6 },
   metaLabel: { fontSize: 12, fontFamily: FONT, textTransform: "lowercase", marginTop: 10 },
@@ -2073,8 +2257,10 @@ const styles = StyleSheet.create({
   elementAdvEmoji: { fontSize: 16 },
   elementAdvValue: { fontSize: 11, fontFamily: FONT },
 
-  collectionGrid: { flexDirection: "row", flexWrap: "wrap", gap: 16 },
-  collectionItem: { width: "46%", alignItems: "center", gap: 6, paddingVertical: 12, borderBottomWidth: 2 },
+  collectionHeader: { gap: 8, marginBottom: 16 },
+  collectionListContent: { paddingHorizontal: 24, paddingTop: 56, paddingBottom: 96 },
+  collectionRow: { justifyContent: "space-between", gap: 16 },
+  collectionItem: { flex: 1, alignItems: "center", gap: 6, paddingVertical: 12, borderBottomWidth: 2, marginBottom: 16 },
   collectionName: { fontSize: 12, fontFamily: FONT },
   collectionMeta: { fontSize: 10, fontFamily: FONT, textTransform: "lowercase" },
 
