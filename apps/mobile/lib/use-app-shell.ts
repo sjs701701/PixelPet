@@ -52,6 +52,12 @@ export type ProfileSessionState = "active" | "signed-out";
 export type ProfileSaveState = "local-only" | "not-ready";
 export type PendingLevelUpCelebration = LevelUpCelebration;
 
+type LocalPetCommitResult = {
+  applied: boolean;
+  state?: LocalPetState;
+  version: number;
+};
+
 function isUnauthorizedError(error: unknown) {
   return error instanceof ApiError && error.status === 401;
 }
@@ -76,6 +82,7 @@ export function useAppShellState() {
   const [localPetState, setLocalPetState] = useState<LocalPetState | undefined>();
   const [pendingLevelUpCelebration, setPendingLevelUpCelebration] = useState<PendingLevelUpCelebration | undefined>();
   const localPetStateRef = useRef<LocalPetState | undefined>(undefined);
+  const localPetStateVersionRef = useRef(0);
   const lastCelebratedLevelUpKeyRef = useRef<string | undefined>(undefined);
   const previousTabRef = useRef<TabKey>("home");
   const { user, token, pet, language, setSession, setPet, setLanguage, clearSession } =
@@ -96,26 +103,77 @@ export function useAppShellState() {
 
   const premiumAssist = user?.premiumStatus === "premium";
 
-  const commitLocalPetState = useCallback(async (next?: LocalPetState) => {
+  const commitLocalPetState = useCallback(async (next?: LocalPetState): Promise<LocalPetCommitResult> => {
+    const version = localPetStateVersionRef.current + 1;
+    localPetStateVersionRef.current = version;
     localPetStateRef.current = next;
     setLocalPetState(next);
     setPet(next?.pet);
     await persistLocalPetState(next);
-    return next;
+    return {
+      applied: true,
+      state: next,
+      version,
+    };
   }, [setPet]);
+
+  const commitLocalPetStateIfVersion = useCallback(async (
+    expectedVersion: number,
+    next?: LocalPetState,
+  ): Promise<LocalPetCommitResult> => {
+    if (localPetStateVersionRef.current !== expectedVersion) {
+      return {
+        applied: false,
+        state: localPetStateRef.current,
+        version: localPetStateVersionRef.current,
+      };
+    }
+
+    return commitLocalPetState(next);
+  }, [commitLocalPetState]);
 
   const projectCurrentLocalPet = useCallback(async (now: Date | string = new Date()) => {
     const current = localPetStateRef.current;
+    const version = localPetStateVersionRef.current;
     if (!current) {
-      return undefined;
+      return {
+        applied: false,
+        state: undefined,
+        version,
+      } satisfies LocalPetCommitResult;
     }
 
     const projected = projectLocalPetState(current, now, premiumAssist);
     if (JSON.stringify(projected) !== JSON.stringify(current)) {
-      await commitLocalPetState(projected);
+      return commitLocalPetStateIfVersion(version, projected);
     }
-    return projected;
-  }, [commitLocalPetState, premiumAssist]);
+
+    return {
+      applied: false,
+      state: current,
+      version,
+    } satisfies LocalPetCommitResult;
+  }, [commitLocalPetStateIfVersion, premiumAssist]);
+
+  const applyLocalPetMutation = useCallback(async (
+    buildNext: (current: LocalPetState) => LocalPetState,
+    now: Date | string = new Date(),
+  ) => {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const projected = await projectCurrentLocalPet(now);
+      if (!projected.state) {
+        throw new Error("No active pet");
+      }
+
+      const next = buildNext(projected.state);
+      const commitResult = await commitLocalPetStateIfVersion(projected.version, next);
+      if (commitResult.applied) {
+        return next;
+      }
+    }
+
+    throw new Error("Local pet state changed too quickly; please retry");
+  }, [commitLocalPetStateIfVersion, projectCurrentLocalPet]);
 
   const queueLevelUpCelebration = useCallback((
     beforeState: LocalPetState | undefined,
@@ -142,7 +200,8 @@ export function useAppShellState() {
     }
 
     const deviceId = user?.installId ?? await getOrCreateInstallId();
-    const current = await projectCurrentLocalPet(now);
+    const projected = await projectCurrentLocalPet(now);
+    const current = projected.state;
     if (!current) {
       return null;
     }
@@ -152,7 +211,10 @@ export function useAppShellState() {
 
       if (current.pendingDeletedPetId) {
         await acceptPetDeath(token, current.pendingDeletedPetId);
-        await commitLocalPetState(markLocalPetStateSynced(current, now));
+        await commitLocalPetStateIfVersion(
+          projected.version,
+          markLocalPetStateSynced(current, now),
+        );
         setOfflineMode(false);
         return null;
       }
@@ -167,7 +229,10 @@ export function useAppShellState() {
         pendingCareActions: current.pendingCareActions,
         timeIntegrity: current.timeIntegrity,
       });
-      await commitLocalPetState(markLocalPetStateSynced(current, now, syncedPet));
+      await commitLocalPetStateIfVersion(
+        projected.version,
+        markLocalPetStateSynced(current, now, syncedPet),
+      );
       setOfflineMode(false);
       return syncedPet;
     } catch (error) {
@@ -362,7 +427,7 @@ export function useAppShellState() {
 
       projectCurrentLocalPet(new Date())
         .then((afterState) => {
-          queueLevelUpCelebration(beforeState, afterState);
+          queueLevelUpCelebration(beforeState, afterState.state);
         })
         .catch(() => undefined);
     }, ACTIVE_PROJECTION_INTERVAL_MS);
@@ -383,9 +448,9 @@ export function useAppShellState() {
       const beforeState = localPetStateRef.current;
       projectCurrentLocalPet(new Date())
         .then((afterState) => {
-          queueLevelUpCelebration(beforeState, afterState);
+          queueLevelUpCelebration(beforeState, afterState.state);
 
-          if (!offlineMode && token && afterState) {
+          if (!offlineMode && token && afterState.state) {
             syncLocalPetState(new Date()).catch(() => undefined);
           }
         })
@@ -411,7 +476,7 @@ export function useAppShellState() {
     const beforeState = localPetStateRef.current;
     projectCurrentLocalPet(new Date())
       .then((afterState) => {
-        queueLevelUpCelebration(beforeState, afterState);
+        queueLevelUpCelebration(beforeState, afterState.state);
       })
       .catch(() => undefined);
   }, [projectCurrentLocalPet, queueLevelUpCelebration, startupPhase, tab]);
@@ -459,11 +524,11 @@ export function useAppShellState() {
 
   const reviveMutation = useMutation({
     mutationFn: async () => {
-      const current = await projectCurrentLocalPet(new Date());
-      if (!current) throw new Error("No active pet");
-
-      const next = applyOfflineRevive(current, new Date(), premiumAssist);
-      await commitLocalPetState(next);
+      const now = new Date();
+      const next = await applyLocalPetMutation(
+        (current) => applyOfflineRevive(current, now, premiumAssist),
+        now,
+      );
 
       if (!offlineMode && token) {
         syncLocalPetState(new Date()).catch(() => undefined);
@@ -475,11 +540,11 @@ export function useAppShellState() {
 
   const acceptDeathMutation = useMutation({
     mutationFn: async () => {
-      const current = await projectCurrentLocalPet(new Date());
-      if (!current) throw new Error("No active pet");
-
-      const next = applyOfflineAcceptDeath(current, new Date(), premiumAssist);
-      await commitLocalPetState(next);
+      const now = new Date();
+      await applyLocalPetMutation(
+        (current) => applyOfflineAcceptDeath(current, now, premiumAssist),
+        now,
+      );
 
       if (!offlineMode && token) {
         syncLocalPetState(new Date()).catch(() => undefined);
@@ -536,14 +601,9 @@ export function useAppShellState() {
     startedAt?: number,
     durationMs?: number,
   ) => {
-    const current = await projectCurrentLocalPet(new Date());
-    if (!current) {
-      throw new Error("No active pet");
-    }
-
     const installId = user?.installId ?? await getOrCreateInstallId();
     const completedAt = new Date();
-    const next = applyOfflineCareAction({
+    const next = await applyLocalPetMutation((current) => applyOfflineCareAction({
       current,
       action,
       deviceId: installId,
@@ -551,9 +611,7 @@ export function useAppShellState() {
       startedAt: startedAt ? new Date(startedAt) : completedAt,
       completedAt,
       durationMs: durationMs ?? 0,
-    });
-
-    await commitLocalPetState(next);
+    }), completedAt);
 
     if (!offlineMode && token) {
       syncLocalPetState(new Date()).catch(() => undefined);
@@ -568,16 +626,22 @@ export function useAppShellState() {
       return null;
     }
 
+    const expectedVersion = localPetStateVersionRef.current;
+
     try {
       const refreshedPet = await getMyPet(token);
       setOfflineMode(false);
 
       if (!refreshedPet) {
-        await commitLocalPetState(markLocalPetStateSynced(localPetStateRef.current, new Date()));
+        await commitLocalPetStateIfVersion(
+          expectedVersion,
+          markLocalPetStateSynced(localPetStateRef.current, new Date()),
+        );
         return null;
       }
 
-      await commitLocalPetState(
+      await commitLocalPetStateIfVersion(
+        expectedVersion,
         markLocalPetStateSynced(localPetStateRef.current, new Date(), refreshedPet),
       );
       return refreshedPet;
@@ -589,7 +653,7 @@ export function useAppShellState() {
       }
       throw error;
     }
-  }, [commitLocalPetState, projectCurrentLocalPet, token]);
+  }, [commitLocalPetState, commitLocalPetStateIfVersion, projectCurrentLocalPet, token]);
 
   const handleLogout = useCallback(() => {
     setAuthError(null);
@@ -608,6 +672,8 @@ export function useAppShellState() {
     clearStoredSession().catch(() => undefined);
     clearLocalPetState().catch(() => undefined);
     clearSession();
+    localPetStateVersionRef.current += 1;
+    localPetStateRef.current = undefined;
     setLocalPetState(undefined);
     setTab("home");
     setStartupPhase("login");

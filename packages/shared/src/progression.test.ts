@@ -55,7 +55,7 @@ describe("pet progression", () => {
 
     const progressed = simulatePetProgress(pet, "2026-03-10T00:10:00.000Z");
 
-    expect(progressed.experience).toBe(2);
+    expect(progressed.experience).toBe(4);
     expect(progressed.lifeState).toBe("good");
   });
 
@@ -68,8 +68,8 @@ describe("pet progression", () => {
     expect(progressed.lifeState).toBe("alive");
   });
 
-  it("uses a 10-minute tick and accelerated passive XP", () => {
-    expect(PROGRESSION_TICK_MS).toBe(10 * 60 * 1000);
+  it("uses a 5-minute tick and accelerated passive XP", () => {
+    expect(PROGRESSION_TICK_MS).toBe(5 * 60 * 1000);
     expect(PASSIVE_XP_PER_GOOD_TICK).toBe(2);
 
     const pet = createPet({
@@ -85,7 +85,8 @@ describe("pet progression", () => {
 
     const progressed = simulatePetProgress(pet, "2026-03-10T02:00:00.000Z");
 
-    expect(progressed.experience).toBe(24);
+    expect(progressed.level).toBe(1);
+    expect(progressed.experience).toBe(38);
   });
 
   it("accumulates partial elapsed time across repeated projections", () => {
@@ -103,9 +104,9 @@ describe("pet progression", () => {
     const fiveMinutes = simulatePetProgress(pet, "2026-03-10T00:05:00.000Z");
     const tenMinutes = simulatePetProgress(fiveMinutes, "2026-03-10T00:10:00.000Z");
 
-    expect(fiveMinutes.experience).toBe(0);
-    expect(fiveMinutes.lastSimulatedAt).toBe("2026-03-10T00:00:00.000Z");
-    expect(tenMinutes.experience).toBe(2);
+    expect(fiveMinutes.experience).toBe(2);
+    expect(fiveMinutes.lastSimulatedAt).toBe("2026-03-10T00:05:00.000Z");
+    expect(tenMinutes.experience).toBe(4);
     expect(tenMinutes.lastSimulatedAt).toBe("2026-03-10T00:10:00.000Z");
   });
 
@@ -126,6 +127,27 @@ describe("pet progression", () => {
     expect(critical.lifeState).toBe("critical");
     expect(dead.lifeState).toBe("dead");
     expect(getTimeToDeathMs(critical, "2026-03-10T06:00:00.000Z")).toBe(6 * 60 * 60 * 1000);
+  });
+
+  it("applies the death deadline even when less than one full tick elapsed", () => {
+    const pet = createPet({
+      lifeState: "critical",
+      criticalSince: "2026-03-10T00:00:00.000Z",
+      lastSimulatedAt: "2026-03-10T11:55:00.000Z",
+      careState: {
+        hunger: 5,
+        mood: 50,
+        hygiene: 50,
+        energy: 50,
+        bond: 50,
+      },
+    });
+
+    const dead = simulatePetProgress(pet, "2026-03-10T12:00:00.000Z");
+
+    expect(dead.lifeState).toBe("dead");
+    expect(dead.diedAt).toBe("2026-03-10T12:00:00.000Z");
+    expect(dead.lastSimulatedAt).toBe("2026-03-10T12:00:00.000Z");
   });
 
   it("requires stronger recovery before leaving critical", () => {
@@ -162,11 +184,11 @@ describe("pet progression", () => {
   });
 
   it("uses banded XP requirements and caps at level 20", () => {
-    expect(getExpRequiredForLevel(0)).toBe(30);
-    expect(getExpRequiredForLevel(1)).toBe(100);
-    expect(getExpRequiredForLevel(5)).toBe(160);
-    expect(getExpRequiredForLevel(10)).toBe(240);
-    expect(getExpRequiredForLevel(15)).toBe(360);
+    expect(getExpRequiredForLevel(0)).toBe(10);
+    expect(getExpRequiredForLevel(1)).toBe(60);
+    expect(getExpRequiredForLevel(5)).toBe(100);
+    expect(getExpRequiredForLevel(10)).toBe(160);
+    expect(getExpRequiredForLevel(15)).toBe(240);
 
     const leveled = applyExperienceGain(
       createPet({

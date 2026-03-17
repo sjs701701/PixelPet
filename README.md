@@ -283,13 +283,13 @@ Level XP requirements:
 
 | Level Range | Required XP |
 | --- | ---: |
-| `0 -> 1` | `30` |
-| `1 - 4` | `100` |
-| `5 - 9` | `160` |
-| `10 - 14` | `240` |
-| `15 - 20` | `360` |
+| `0 -> 1` | `10` |
+| `1 - 4` | `60` |
+| `5 - 9` | `100` |
+| `10 - 14` | `160` |
+| `15 - 20` | `240` |
 
-The home EXP bar stays fixed-width. Numeric EXP text is intentionally hidden on the home card.
+The home EXP bar stays fixed-width. The home card shows only the current EXP percentage.
 
 ### 6.5 Trait-Based Final Growth
 
@@ -353,7 +353,7 @@ All care values are clamped to `0..100`.
 
 ### 6.7 Tick Simulation And Neglect
 
-`1 tick = 10 minutes`
+`1 tick = 5 minutes`
 
 At each tick:
 
@@ -362,22 +362,22 @@ At each tick:
 
 Neglect decay per tick, free user:
 
-- `hunger -(3.5 / 12)`
-- `mood -(3.5 / 12)`
-- `hygiene -(3.5 / 12)`
-- `energy -(3 / 12)`
-- `bond -(1.5 / 12)`
+- `hunger -0.21875`
+- `mood -0.21875`
+- `hygiene -0.21875`
+- `energy -0.1875`
+- `bond -0.09375`
 
 Neglect decay per tick, premium:
 
-- `hunger -(2 / 12)`
-- `mood -(2 / 12)`
-- `hygiene -(2 / 12)`
-- `energy -(1.5 / 12)`
-- `bond -(0.5 / 12)`
+- `hunger -0.125`
+- `mood -0.125`
+- `hygiene -0.125`
+- `energy -0.09375`
+- `bond -0.03125`
 
 Internal calculations allow decimals. The mobile UI rounds visible stat numbers.
-This keeps the total stat decay over 2 hours the same as before, while XP feedback appears much more often.
+This makes stat decay happen more often and increases total hourly decay, while passive XP feedback also appears more often.
 
 When the app returns from the background and passive progression caused one or more level-ups, the home screen shows a single celebration modal summarizing the jump, for example `Lv.3 -> Lv.5`.
 

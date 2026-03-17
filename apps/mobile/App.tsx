@@ -618,13 +618,20 @@ function HomeTab({
   );
   const dangerState = petLifeState === "critical" || petLifeState === "dead";
   const requiredExp = getExpRequiredForLevel(petLevel ?? 0);
+  const expValue = Math.max(0, petExp ?? 0);
+  const expPercent = Math.round((expValue / Math.max(1, requiredExp)) * 100);
+  const expProgressLabel = `${expPercent}%`;
+  const passiveXpIntervalLabel = language === "ko" ? "5분마다" : "every 5 minutes";
+  const starterLevelXpLabel = "10 XP";
   const levelGuideMaxLabel = language === "ko" ? "최대 레벨" : "max level";
   const levelGuideTitle = language === "ko" ? "레벨 안내" : "level guide";
   const levelGuideCurrentLabel = language === "ko" ? "현재 레벨" : "current level";
   const levelGuideNeedLabel = language === "ko" ? "다음 레벨 필요 XP" : "xp needed for next level";
   const levelGuideGainLabel = language === "ko" ? "레벨 올리는 방법" : "how to level up";
   const levelGuideBandLabel = language === "ko" ? "레벨 구간" : "xp bands";
-  const petLifeCopy = getPetLifeCopy(language, petLifeState ?? "alive");
+  const petLifeCopy = dangerState
+    ? getPetLifeCopy(language, petLifeState)
+    : undefined;
   const traitCopy = getTraitCopy(language, petTraitId);
   const statSectionTitle = language === "ko" ? "기본 전투 스탯" : "base battle stats";
   const traitSectionTitle = language === "ko" ? "재능" : "trait";
@@ -662,19 +669,20 @@ function HomeTab({
   ];
   const levelGuideLines = language === "ko"
     ? [
-        `1. 5개 상태값 평균이 75 이상인 good 상태를 유지하면 ${PROGRESSION_TICK_HOURS}시간마다 XP가 ${PASSIVE_XP_PER_GOOD_TICK}씩 오릅니다.`,
+        `1. 5개 상태값 평균이 75 이상인 good 상태를 유지하면 ${passiveXpIntervalLabel} XP가 ${PASSIVE_XP_PER_GOOD_TICK}씩 오릅니다.`,
         `2. 배틀에서도 XP를 얻습니다. 승리 +${BATTLE_WIN_XP}, 패배 +${BATTLE_LOSS_XP}.`,
         "3. 상태가 나쁘면 경험치가 오르지 않으니 배고픔, 기분, 청결, 에너지, 유대감을 잘 관리해야 합니다.",
-        "4. Lv.0에서 Lv.1은 30 XP가 필요하고, 이후 레벨이 올라갈수록 필요 XP가 늘어납니다.",
+        `4. Lv.0에서 Lv.1은 ${starterLevelXpLabel}가 필요하고, 이후 레벨이 올라갈수록 필요 XP가 늘어납니다.`,
       ]
     : [
-        `1. Keep the pet in a good state with a 75+ average across all 5 care stats to earn ${PASSIVE_XP_PER_GOOD_TICK} XP every ${PROGRESSION_TICK_HOURS} hours.`,
+        `1. Keep the pet in a good state with a 75+ average across all 5 care stats to earn ${PASSIVE_XP_PER_GOOD_TICK} XP ${passiveXpIntervalLabel}.`,
         `2. Battles also grant XP. Win +${BATTLE_WIN_XP}, lose +${BATTLE_LOSS_XP}.`,
         "3. Bad condition stops passive XP, so keep hunger, mood, hygiene, energy, and bond healthy.",
+        `4. Lv.0 to Lv.1 needs ${starterLevelXpLabel}, and later levels require more XP.`,
       ];
 
   const displayedLevelGuideLines = language === "ko"
-    ? [
+      ? [
         "1. 5개 상태값의 평균을 75이상으로 일정시간 유지하면 경험치가 쌓입니다.",
         `2. 배틀에서도 XP를 얻습니다. 승리 +${BATTLE_WIN_XP}, 패배 +${BATTLE_LOSS_XP}.`,
         "3. 상태가 나쁘면 경험치가 오르지 않으니 배고픔, 기분, 청결, 에너지, 유대감을 잘 관리해 주세요.",
@@ -688,7 +696,7 @@ function HomeTab({
         "3. 상태가 나쁘면 경험치가 오르지 않으니 배고픔, 기분, 청결, 에너지, 유대감을 잘 관리해 주세요.",
       ]
     : [
-        `1. Keep the pet in a good state with a 75+ average across all 5 care stats to earn ${PASSIVE_XP_PER_GOOD_TICK} XP every 10 minutes.`,
+        `1. Keep the pet in a good state with a 75+ average across all 5 care stats to earn ${PASSIVE_XP_PER_GOOD_TICK} XP ${passiveXpIntervalLabel}.`,
         `2. Battles also grant XP. Win +${BATTLE_WIN_XP}, lose +${BATTLE_LOSS_XP}.`,
         "3. Bad condition stops passive XP, so keep hunger, mood, hygiene, energy, and bond healthy.",
       ];
@@ -789,6 +797,8 @@ function HomeTab({
               name={displayName ?? petTemplateName}
               templateId={petTemplateId}
               level={petLevel ?? 0}
+              // Temporary QA override to preview the level-0 starter animation on Home.
+              stage={0}
               size={18}
             />
           </View>
@@ -841,6 +851,9 @@ function HomeTab({
               ) : null}
             </View>
             <DotExpBar value={petExp ?? 0} maxValue={requiredExp} />
+            <Text style={[styles.expMeta, { color: c.gray }]}>
+              {expProgressLabel}
+            </Text>
             <View style={styles.petStatusRow}>
               {offlineMode ? (
                 <Text style={[styles.statusChip, { color: c.accent, borderColor: c.accent }]}>
@@ -1062,7 +1075,7 @@ function HomeTab({
         </Modal>
 
         <Modal
-          visible={dangerModalOpen}
+          visible={dangerModalOpen && dangerState}
         transparent
         animationType="fade"
         onRequestClose={handleCloseDangerModal}
@@ -1072,8 +1085,8 @@ function HomeTab({
             style={[styles.modalBox, { backgroundColor: c.bg, borderColor: c.divider }]}
             onPress={(event) => event.stopPropagation()}
           >
-            <Text style={[styles.modalTitle, { color: c.text }]}>{petLifeCopy.title}</Text>
-            <Text style={[styles.modalSubtitle, { color: c.gray }]}>{petLifeCopy.body}</Text>
+            <Text style={[styles.modalTitle, { color: c.text }]}>{petLifeCopy?.title ?? ""}</Text>
+            <Text style={[styles.modalSubtitle, { color: c.gray }]}>{petLifeCopy?.body ?? ""}</Text>
             {petLifeState === "critical" && careState ? (
               <View style={styles.modalInfoBlock}>
                 <Text style={[styles.modalSectionLabel, { color: c.grayDark }]}>{timeLeftLabel}</Text>
@@ -2185,14 +2198,14 @@ const styles = StyleSheet.create({
   metaValueItalic: { fontSize: 12, fontFamily: FONT, fontStyle: "italic", textTransform: "lowercase" },
   infoButton: { width: 20, height: 20, borderWidth: 2, borderRadius: 999, alignItems: "center", justifyContent: "center" },
   infoButtonText: { fontSize: 10, fontFamily: FONT_BOLD, lineHeight: 10, textAlign: "center", textTransform: "lowercase" },
-  expMeta: { fontSize: 10, fontFamily: FONT, marginTop: 4 },
+  expMeta: { fontSize: 14, fontFamily: FONT, marginTop: 4 },
   petStatusRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8, marginTop: 10 },
   statusChip: { fontSize: 10, fontFamily: FONT_BOLD, borderWidth: 2, paddingHorizontal: 8, paddingVertical: 4 },
   statusLink: { borderWidth: 2, paddingHorizontal: 8, paddingVertical: 4 },
   statusLinkText: { fontSize: 10, fontFamily: FONT, textTransform: "lowercase" },
 
   dotExpRow: { flexDirection: "row", gap: 2, marginTop: 2 },
-  dotExpCell: { width: 5, height: 5 },
+  dotExpCell: { width: 5, height: 6 },
 
   emptySection: { gap: 12 },
   emptyHeadline: { fontSize: 16, fontFamily: FONT_BOLD },

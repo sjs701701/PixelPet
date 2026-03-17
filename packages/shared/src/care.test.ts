@@ -48,7 +48,7 @@ describe("care rules", () => {
     expect(getCareActionDurationMs("rest", true)).toBe(4_500);
   });
 
-  it("decays all care stats including bond every 10-minute tick", () => {
+  it("decays all care stats including bond every 5-minute tick", () => {
     const base = {
       hunger: 80,
       mood: 80,
@@ -58,18 +58,18 @@ describe("care rules", () => {
     };
 
     expect(applyNeglectDecay(base, false)).toMatchObject({
-      hunger: 79.70833333333333,
-      mood: 79.70833333333333,
-      hygiene: 79.70833333333333,
-      energy: 79.75,
-      bond: 79.875,
+      hunger: 79.78125,
+      mood: 79.78125,
+      hygiene: 79.78125,
+      energy: 79.8125,
+      bond: 79.90625,
     });
     expect(applyNeglectDecay(base, true)).toMatchObject({
-      hunger: 79.83333333333333,
-      mood: 79.83333333333333,
-      hygiene: 79.83333333333333,
-      energy: 79.875,
-      bond: 79.95833333333333,
+      hunger: 79.875,
+      mood: 79.875,
+      hygiene: 79.875,
+      energy: 79.90625,
+      bond: 79.96875,
     });
   });
 });

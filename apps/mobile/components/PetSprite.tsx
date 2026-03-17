@@ -7,6 +7,7 @@ import {
   getTemplateById,
 } from "@pixel-pet-arena/shared";
 import { useTheme } from "../theme/ThemeContext";
+import fireStarterMeta from "../assets/pets/fire/starter/meta.json";
 import fire001Stage1Meta from "../assets/pets/fire/fire-001/stage-1/meta.json";
 
 const STARTER_SPRITES: Record<ElementType, string[]> = {
@@ -25,15 +26,60 @@ const BASE_SPRITES: Record<ElementType, string[]> = {
   digital: ["0001110000", "0012221000", "0123032100", "1234343210", "1233033210", "1234343210", "0123232100", "0012121000", "0001110000", "0000100000"],
 };
 
-const REGISTERED_SPRITES = {
-  "fire-1:stage1": {
-    source: require("../assets/pets/fire/fire-001/stage-1/idle.png"),
-    frameWidth: fire001Stage1Meta.frameWidth,
-    frameHeight: fire001Stage1Meta.frameHeight,
-    frames: fire001Stage1Meta.idleFrames,
-    fps: fire001Stage1Meta.fps.idle,
-  },
-} as const;
+type SpriteMeta = {
+  frameWidth: number;
+  frameHeight: number;
+  idleFrames?: number;
+  frameCount?: number;
+  columns?: number;
+  rows?: number;
+  fps: number | { idle: number };
+};
+
+type RegisteredSprite = {
+  source: number;
+  frameWidth: number;
+  frameHeight: number;
+  frames: number;
+  columns: number;
+  rows: number;
+  fps: number;
+  pixelScale?: number;
+};
+
+function createRegisteredSprite(
+  source: number,
+  meta: SpriteMeta,
+  options?: { pixelScale?: number },
+): RegisteredSprite {
+  const frames = meta.frameCount ?? meta.idleFrames ?? 1;
+  const columns = meta.columns ?? frames;
+  const rows = meta.rows ?? Math.max(1, Math.ceil(frames / Math.max(1, columns)));
+  const fps = typeof meta.fps === "number" ? meta.fps : meta.fps.idle;
+
+  return {
+    source,
+    frameWidth: meta.frameWidth,
+    frameHeight: meta.frameHeight,
+    frames,
+    columns,
+    rows,
+    fps,
+    pixelScale: options?.pixelScale,
+  };
+}
+
+const REGISTERED_SPRITES: Record<string, RegisteredSprite> = {
+  "fire:stage0": createRegisteredSprite(
+    require("../assets/pets/fire/starter/idle.png"),
+    fireStarterMeta,
+    { pixelScale: 9 },
+  ),
+  "fire-1:stage1": createRegisteredSprite(
+    require("../assets/pets/fire/fire-001/stage-1/idle.png"),
+    fire001Stage1Meta,
+  ),
+};
 
 function makePalettes(
   pixelFire: string,
@@ -124,6 +170,22 @@ function getFallbackRows(
   return applyVariant(BASE_SPRITES[element], templateId, stage);
 }
 
+function getRegisteredSpriteKey(
+  element: ElementType,
+  templateId: string | undefined,
+  stage: PetEvolutionStage,
+) {
+  if (stage === 0) {
+    return `${element}:stage0`;
+  }
+
+  if (!templateId) {
+    return undefined;
+  }
+
+  return `${templateId}:stage${stage}`;
+}
+
 type PetSpriteProps = {
   element: ElementType;
   name: string;
@@ -143,9 +205,7 @@ export const PetSprite = memo(function PetSprite({
 }: PetSpriteProps) {
   const { c } = useTheme();
   const resolvedStage = stage ?? getEvolutionStage(level ?? 1);
-  const registeredKey = templateId
-    ? `${templateId}:stage${resolvedStage}` as keyof typeof REGISTERED_SPRITES
-    : undefined;
+  const registeredKey = getRegisteredSpriteKey(element, templateId, resolvedStage);
   const spriteConfig = registeredKey ? REGISTERED_SPRITES[registeredKey] : undefined;
   const [frameIndex, setFrameIndex] = useState(0);
   const palette = makePalettes(
@@ -180,12 +240,18 @@ export const PetSprite = memo(function PetSprite({
 
   const scaledSize = useMemo(() => {
     if (!spriteConfig) return null;
-    const scale = size / 40;
+    const scale = spriteConfig.pixelScale
+      ? spriteConfig.pixelScale
+      : size / 40;
+    const column = frameIndex % spriteConfig.columns;
+    const row = Math.floor(frameIndex / spriteConfig.columns);
     return {
       frameWidth: Math.round(spriteConfig.frameWidth * scale),
       frameHeight: Math.round(spriteConfig.frameHeight * scale),
-      sheetWidth: Math.round(spriteConfig.frameWidth * spriteConfig.frames * scale),
-      offsetX: -Math.round(spriteConfig.frameWidth * frameIndex * scale),
+      sheetWidth: Math.round(spriteConfig.frameWidth * spriteConfig.columns * scale),
+      sheetHeight: Math.round(spriteConfig.frameHeight * spriteConfig.rows * scale),
+      offsetX: -Math.round(spriteConfig.frameWidth * column * scale),
+      offsetY: -Math.round(spriteConfig.frameHeight * row * scale),
     };
   }, [frameIndex, size, spriteConfig]);
 
@@ -205,8 +271,11 @@ export const PetSprite = memo(function PetSprite({
             source={spriteConfig.source}
             style={{
               width: scaledSize.sheetWidth,
-              height: scaledSize.frameHeight,
-              transform: [{ translateX: scaledSize.offsetX }],
+              height: scaledSize.sheetHeight,
+              transform: [
+                { translateX: scaledSize.offsetX },
+                { translateY: scaledSize.offsetY },
+              ],
             }}
             resizeMode="stretch"
           />

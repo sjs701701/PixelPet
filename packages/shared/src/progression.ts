@@ -9,7 +9,7 @@ import {
   PetTraitId,
 } from "./types";
 
-export const PROGRESSION_TICK_HOURS = 1 / 6;
+export const PROGRESSION_TICK_HOURS = 1 / 12;
 export const PROGRESSION_TICK_MS = PROGRESSION_TICK_HOURS * 60 * 60 * 1000;
 export const PASSIVE_XP_PER_GOOD_TICK = 2;
 export const GOOD_AVERAGE_THRESHOLD = 75;
@@ -129,12 +129,20 @@ function getCriticalDeadline(criticalSince: string) {
   return new Date(toMs(criticalSince) + CRITICAL_DURATION_MS).toISOString();
 }
 
-function resolveLifeState(pet: PetInstance, nowIso: string): PetInstance {
+function resolveLifeState(
+  pet: PetInstance,
+  nowIso: string,
+  options?: { preserveLastSimulatedAt?: boolean },
+): PetInstance {
+  const lastSimulatedAt = options?.preserveLastSimulatedAt
+    ? pet.lastSimulatedAt
+    : nowIso;
+
   if (pet.diedAt) {
     return {
       ...pet,
       lifeState: "dead",
-      lastSimulatedAt: nowIso,
+      lastSimulatedAt,
     };
   }
 
@@ -144,7 +152,7 @@ function resolveLifeState(pet: PetInstance, nowIso: string): PetInstance {
         ...pet,
         lifeState: "dead",
         diedAt: getCriticalDeadline(pet.criticalSince),
-        lastSimulatedAt: nowIso,
+        lastSimulatedAt,
       };
     }
 
@@ -153,14 +161,14 @@ function resolveLifeState(pet: PetInstance, nowIso: string): PetInstance {
         ...pet,
         lifeState: isGoodCareState(pet.careState) ? "good" : "alive",
         criticalSince: undefined,
-        lastSimulatedAt: nowIso,
+        lastSimulatedAt,
       };
     }
 
     return {
       ...pet,
       lifeState: "critical",
-      lastSimulatedAt: nowIso,
+      lastSimulatedAt,
     };
   }
 
@@ -169,35 +177,35 @@ function resolveLifeState(pet: PetInstance, nowIso: string): PetInstance {
       ...pet,
       lifeState: "critical",
       criticalSince: nowIso,
-      lastSimulatedAt: nowIso,
+      lastSimulatedAt,
     };
   }
 
   return {
     ...pet,
     lifeState: isGoodCareState(pet.careState) ? "good" : "alive",
-    lastSimulatedAt: nowIso,
+    lastSimulatedAt,
   };
 }
 
 export function getExpRequiredForLevel(level: number) {
   if (level <= 0) {
-    return 30;
+    return 10;
   }
 
   if (level <= 4) {
-    return 100;
+    return 60;
   }
 
   if (level <= 9) {
-    return 160;
+    return 100;
   }
 
   if (level <= 14) {
-    return 240;
+    return 160;
   }
 
-  return 360;
+  return 240;
 }
 
 export function getEvolutionStage(level: number): PetEvolutionStage {
@@ -415,7 +423,8 @@ export function simulatePetProgress(
       ...current,
       lastSimulatedAt: current.lastSimulatedAt,
     },
-    current.lastSimulatedAt,
+    new Date(cappedEnd).toISOString(),
+    { preserveLastSimulatedAt: true },
   );
 }
 

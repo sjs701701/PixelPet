@@ -29,7 +29,8 @@ const CARE_DELTA: Record<CareAction, Partial<CareState>> = {
   },
 };
 
-// Temporary test tuning. Restore to 1 before production launch.
+// Manual QA-only tuning so care flows finish quickly during local testing.
+// Restore to 1 before shipping or validating production timings.
 const CARE_DURATION_SCALE = 0.1;
 
 export const CARE_ACTION_DURATION_MS: Record<CareAction, { free: number; premium: number }> = {
@@ -64,8 +65,8 @@ export function applyCareAction(
 
 export function applyNeglectDecay(careState: CareState, premiumAssist: boolean): CareState {
   const decay = premiumAssist
-    ? { hunger: 2 / 12, mood: 2 / 12, hygiene: 2 / 12, energy: 1.5 / 12, bond: 0.5 / 12 }
-    : { hunger: 3.5 / 12, mood: 3.5 / 12, hygiene: 3.5 / 12, energy: 3 / 12, bond: 1.5 / 12 };
+    ? { hunger: 0.125, mood: 0.125, hygiene: 0.125, energy: 0.09375, bond: 0.03125 }
+    : { hunger: 0.21875, mood: 0.21875, hygiene: 0.21875, energy: 0.1875, bond: 0.09375 };
 
   return {
     hunger: clampCareValue(careState.hunger - decay.hunger),
